@@ -1,0 +1,200 @@
+/* --- 基础重置 --- */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  /* 设置系统默认的中文字体，确保显示优雅 */
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", STHeiti, "Microsoft Yahei", Tahoma, Simsun, sans-serif;
+  /* 临时背景，如果你有 canvas 背景，这个颜色会被遮挡或作为底色 */
+  background: linear-gradient(135deg, #121c25 0%, #1a2a3a 100%);
+  color: #ffffff;
+  overflow: hidden; /* 防止游戏界面出现滚动条 */
+  height: 100vh;
+  width: 100vw;
+}
+
+/* --- Canvas 层 --- */
+#game-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0; /* 放在最底层 */
+}
+
+/* --- UI 层容器 --- */
+#ui {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 10; /* 放在 Canvas 上层 */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  pointer-events: none;
+}
+
+/* --- 屏幕通用设置 --- */
+.screen {
+  display: none; /* 默认隐藏 */
+  width: 100%;
+  height: 100%;
+  justify-content: center;
+  align-items: center;
+  pointer-events: none;
+}
+.screen.active {
+  display: flex; /* 激活时显示 */
+  pointer-events: auto;
+}
+
+/* --- 核心：高级毛玻璃卡片设计 --- */
+.content {
+  background: rgba(255, 255, 255, 0.03); /* 极低的白色透明度 */
+  backdrop-filter: blur(20px); /* 强毛玻璃模糊效果 */
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1); /* 细腻的边缘高光 */
+  border-radius: 24px; /* 更圆润的边角 */
+  padding: 3rem 5rem;
+  text-align: center;
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2); /* 外阴影加深层次，内阴影增加立体感 */
+
+  /* 入场动画 */
+  animation: floatUp 1.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  opacity: 0;
+  transform: translateY(30px);
+}
+
+/* --- 字体排版 --- */
+h1 {
+  font-size: 3.5rem;
+  font-weight: 800;
+  letter-spacing: 8px; /* 增加字间距，提升宏大感 */
+  margin-bottom: 1rem;
+  /* 标题文字渐变色 */
+  background: linear-gradient(to bottom, #ffffff 40%, #aab8c2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  /* 文字发光 */
+  filter: drop-shadow(0 4px 8px rgba(0,0,0,0.5));
+}
+
+.content p {
+  font-size: 1.1rem;
+  color: #b0c4de; /* 冷色调灰蓝色 */
+  letter-spacing: 4px;
+  margin-bottom: 3rem;
+  font-weight: 300;
+}
+
+/* --- 游戏化按钮设计 --- */
+.btn {
+  /* 抛弃平庸的纯绿，改用体现天空/科技感的渐变色 */
+  background: linear-gradient(135deg, #00f2fe 0%, #4facfe 100%);
+  color: #ffffff;
+  border: none;
+  padding: 16px 48px;
+  font-size: 1.2rem;
+  font-weight: bold;
+  letter-spacing: 2px;
+  border-radius: 50px; /* 胶囊形按钮 */
+  cursor: pointer;
+  box-shadow: 0 10px 20px -5px rgba(79, 172, 254, 0.5); /* 按钮发光阴影 */
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+/* 按钮悬浮交互 */
+.btn:hover {
+  transform: translateY(-3px) scale(1.05); /* 放大并上浮 */
+  box-shadow: 0 15px 25px -5px rgba(79, 172, 254, 0.7); /* 发光增强 */
+}
+
+.btn:active {
+  transform: translateY(1px) scale(0.98);
+}
+
+/* 按钮内扫光特效 (可选，增加高级感) */
+.btn::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(to right, rgba(255,255,255,0) 0%, rgba(255,255,255,0.3) 50%, rgba(255,255,255,0) 100%);
+  transform: skewX(-25deg);
+  animation: sweep 3s infinite;
+}
+
+/* --- 操作提示面板 (优化为左下角游戏HUD风格) --- */
+.controls-hint {
+  position: absolute;
+  bottom: 30px;
+  left: 30px;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(10px);
+  padding: 1.5rem;
+  border-radius: 12px;
+  border-left: 4px solid #4facfe; /* 左侧高亮条 */
+  color: #ccc;
+  font-size: 0.9rem;
+  pointer-events: auto;
+}
+
+.controls-hint.hidden {
+  opacity: 0;
+  transform: translateY(20px);
+  pointer-events: none;
+  transition: all 0.5s ease;
+}
+
+.controls-hint h3 {
+  color: #fff;
+  margin-bottom: 1rem;
+  font-size: 1.1rem;
+}
+
+.controls-hint p {
+  margin-bottom: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 键盘按键样式 */
+.key {
+  display: inline-block;
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.2);
+  padding: 2px 8px;
+  border-radius: 4px;
+  color: #fff;
+  font-family: monospace;
+  margin-right: 8px;
+}
+
+/* --- 动画定义 --- */
+@keyframes floatUp {
+  0% {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes sweep {
+  0% { left: -100%; }
+  20% { left: 200%; }
+  100% { left: 200%; }
+}

@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>极限国度</title>
+  <link rel="stylesheet" href="./styles/main.css">
+</head>
+<body>
+  <canvas id="game-canvas"></canvas>
+  <div id="ui">
+    <div id="start-screen" class="screen active">
+      <div class="content">
+        <h1>⛰️ 极限国度</h1>
+        <p>探索无尽的山脉与云海</p>
+        <button id="start-btn" class="btn">开始旅程</button>
+      </div>
+    </div>
+    
+    <div class="controls-hint hidden">
+      <h3>🏔️ 探险指南</h3>
+      <p><span class="key">WASD</span> 移动</p>
+      <p><span class="key">Shift</span> 加速</p>
+      <p><span class="key">Space</span> 飞行/滑翔</p>
+    </div>
+  </div>
+  <script type="module" src="./src/main.ts"></script>
+</body>
+</html>

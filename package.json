@@ -1,0 +1,20 @@
+{
+  "name": "top-down-3d-game",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "俯视角3D游戏 - Three.js + Cannon.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "@types/three": "^0.184.0",
+    "typescript": "^6.0.3",
+    "vite": "^5.0.0"
+  },
+  "dependencies": {
+    "cannon-es": "^0.20.0",
+    "three": "^0.160.0"
+  }
+}
