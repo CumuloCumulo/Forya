@@ -14,6 +14,9 @@ export class Player {
   private leftLeg = new THREE.Group();
   private rightLeg = new THREE.Group();
   private wingSuit!: THREE.Mesh;
+  private wingSuitOpenPositions = new Float32Array();
+  private wingSuitTuckedPositions = new Float32Array();
+  private speedPose = 0;
   private targetRotation = 0;
   private turnAmount = 0;
   private boost = 1;
@@ -106,13 +109,23 @@ export class Player {
     this.mesh.add(this.leftArm, this.rightArm, this.leftLeg, this.rightLeg);
 
     const wingGeometry = new THREE.BufferGeometry();
-    wingGeometry.setAttribute('position', new THREE.Float32BufferAttribute([
+    this.wingSuitOpenPositions = new Float32Array([
       -0.18,0.2,0.34, -1.28,0.12,-0.02, -0.37,0.02,-0.56,
       -0.18,0.2,0.34, -0.37,0.02,-0.56, 0.37,0.02,-0.56,
        0.18,0.2,0.34,  0.37,0.02,-0.56,  1.28,0.12,-0.02,
       -0.34,0.03,-0.48, -0.21,-0.01,-1.42, 0.0,0.0,-0.72,
        0.34,0.03,-0.48,  0.0,0.0,-0.72, 0.21,-0.01,-1.42,
-    ], 3));
+    ]);
+    this.wingSuitTuckedPositions = new Float32Array([
+      -0.18,0.2,0.34, -0.48,0.1,-0.72, -0.34,0.02,-0.58,
+      -0.18,0.2,0.34, -0.34,0.02,-0.58, 0.34,0.02,-0.58,
+       0.18,0.2,0.34,  0.34,0.02,-0.58,  0.48,0.1,-0.72,
+      -0.3,0.03,-0.5, -0.12,-0.01,-1.42, 0.0,0.0,-0.78,
+       0.3,0.03,-0.5,  0.0,0.0,-0.78, 0.12,-0.01,-1.42,
+    ]);
+    const wingPositions = new THREE.BufferAttribute(this.wingSuitOpenPositions.slice(), 3);
+    wingPositions.setUsage(THREE.DynamicDrawUsage);
+    wingGeometry.setAttribute('position', wingPositions);
     wingGeometry.computeVertexNormals();
     this.wingSuit = new THREE.Mesh(wingGeometry, new THREE.MeshStandardMaterial({ color: 0x1b7180, roughness: 0.78, side: THREE.DoubleSide }));
     this.wingSuit.castShadow = true;
@@ -247,11 +260,29 @@ export class Player {
     const pitch = this.flaring ? THREE.MathUtils.lerp(-0.16, -0.42, climbFactor) : THREE.MathUtils.lerp(0.06, 0.4, descentEnergy);
     this.mesh.rotation.x = THREE.MathUtils.damp(this.mesh.rotation.x, pitch, 3.5, deltaTime);
 
-    const pose = this.flaring ? -0.2 : this.sprinting ? 0.12 : 0;
-    this.leftArm.rotation.z = THREE.MathUtils.damp(this.leftArm.rotation.z, pose, 4, deltaTime);
-    this.rightArm.rotation.z = THREE.MathUtils.damp(this.rightArm.rotation.z, -pose, 4, deltaTime);
-    this.leftLeg.rotation.z = THREE.MathUtils.damp(this.leftLeg.rotation.z, -0.13 - this.turnAmount * 0.08, 4, deltaTime);
-    this.rightLeg.rotation.z = THREE.MathUtils.damp(this.rightLeg.rotation.z, 0.13 - this.turnAmount * 0.08, 4, deltaTime);
+    // Shift transitions from a stable wide-wing glide into a streamlined speed pose.
+    // The arms sweep alongside the torso and the fabric collapses with them instead of
+    // leaving a rigid triangular membrane behind.
+    this.speedPose = THREE.MathUtils.damp(this.speedPose, this.sprinting ? 1 : 0, 5.6, deltaTime);
+    const flareRoll = this.flaring ? -0.2 : 0;
+    this.leftArm.rotation.z = THREE.MathUtils.damp(this.leftArm.rotation.z, flareRoll, 5, deltaTime);
+    this.rightArm.rotation.z = THREE.MathUtils.damp(this.rightArm.rotation.z, -flareRoll, 5, deltaTime);
+    this.leftArm.rotation.y = THREE.MathUtils.damp(this.leftArm.rotation.y, THREE.MathUtils.lerp(0.12, -1.08, this.speedPose), 7, deltaTime);
+    this.rightArm.rotation.y = THREE.MathUtils.damp(this.rightArm.rotation.y, THREE.MathUtils.lerp(-0.12, 1.08, this.speedPose), 7, deltaTime);
+    const legSpread = THREE.MathUtils.lerp(0.13, 0.045, this.speedPose);
+    this.leftLeg.rotation.z = THREE.MathUtils.damp(this.leftLeg.rotation.z, -legSpread - this.turnAmount * 0.08, 4, deltaTime);
+    this.rightLeg.rotation.z = THREE.MathUtils.damp(this.rightLeg.rotation.z, legSpread - this.turnAmount * 0.08, 4, deltaTime);
+    this.updateWingSuitPose();
+  }
+
+  private updateWingSuitPose(): void {
+    const attribute = this.wingSuit.geometry.getAttribute('position') as THREE.BufferAttribute;
+    const positions = attribute.array as Float32Array;
+    for (let i = 0; i < positions.length; i++) {
+      positions[i] = THREE.MathUtils.lerp(this.wingSuitOpenPositions[i], this.wingSuitTuckedPositions[i], this.speedPose);
+    }
+    attribute.needsUpdate = true;
+    this.wingSuit.geometry.computeVertexNormals();
   }
 
   update(): void {
@@ -282,6 +313,7 @@ export class Player {
     this.body.velocity.set(0, -2, 25);
     this.mesh.position.set(x, y, z);
     this.targetRotation = 0;
+    this.speedPose = 0;
     this.mesh.rotation.set(0, 0, 0);
   }
 }
