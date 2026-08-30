@@ -3,348 +3,285 @@ import * as CANNON from 'cannon-es';
 
 interface PhysicsWorldInterface {
   addPlayerBody(position: { x: number; y: number; z: number }, radius: number): CANNON.Body;
-  addBody(body: CANNON.Body): void;
-  removeBody(body: CANNON.Body): void;
-  update(deltaTime: number): void;
 }
-
-interface WorldManagerInterface {
-  getHeightAt(x: number, z: number): number;
-}
+interface WorldManagerInterface { getHeightAt(x: number, z: number): number; }
 
 export class Player {
-  private scene: THREE.Scene;
-  private physics: PhysicsWorldInterface;
-
-  speed: number = 30;
-  sprintSpeed: number = 80;
-  private flySpeed: number = 15;
-  private glideSpeed: number = 100;
-  currentSpeed: number = this.speed;
-
-  private radius: number = 0.6;
-
-  isSprinting: boolean = false;
-  isFlying: boolean = false;
-  isMoving: boolean = false;
-  private targetRotation: number = 0;
-
-  private wingAngle: number = 0;
-  private flapSpeed: number = 0;
-
-  mesh: THREE.Group;
-  private leftWing!: THREE.Group;
-  private rightWing!: THREE.Group;
-  body: CANNON.Body;
-  private trails: THREE.Mesh[] = [];
-  private trailTime: number = 0;
+  readonly mesh = new THREE.Group();
+  readonly body: CANNON.Body;
+  private leftArm = new THREE.Group();
+  private rightArm = new THREE.Group();
+  private leftLeg = new THREE.Group();
+  private rightLeg = new THREE.Group();
+  private wingSuit!: THREE.Mesh;
+  private targetRotation = 0;
+  private turnAmount = 0;
+  private boost = 1;
+  private sprinting = false;
+  private flaring = false;
+  private moving = false;
+  private speed = 27;
+  private trailTime = 0;
+  private contrails: THREE.Mesh[] = [];
 
   constructor(scene: THREE.Scene, physics: PhysicsWorldInterface) {
-    this.scene = scene;
-    this.physics = physics;
-
-    this.mesh = new THREE.Group();
-    this.createMesh();
-
-    this.body = physics.addPlayerBody({ x: 0, y: 10, z: 0 }, this.radius);
+    this.mesh.name = 'wingsuit-rider';
+    this.createRider();
+    scene.add(this.mesh);
+    this.body = physics.addPlayerBody({ x: 0, y: 10, z: 0 }, 0.72);
+    this.body.linearDamping = 0.045;
   }
 
-  private createMesh(): void {
-    const colors = {
-      primary: 0x29b6f6,
-      secondary: 0x0277bd,
-      belly: 0xe1f5fe,
-      beak: 0xffca28,
-      crest: 0xffffff
-    };
+  private material(color: number, roughness = 0.62, metalness = 0.02): THREE.MeshStandardMaterial {
+    return new THREE.MeshStandardMaterial({ color, roughness, metalness });
+  }
 
-    // 1. Body
-    const bodyGeo = new THREE.SphereGeometry(0.4, 12, 12);
-    bodyGeo.scale(0.8, 0.9, 1.4);
-    const bodyMat = new THREE.MeshStandardMaterial({
-      color: colors.primary,
-      roughness: 0.7,
-      flatShading: true
-    });
-    const bodyMesh = new THREE.Mesh(bodyGeo, bodyMat);
-    bodyMesh.position.y = 0.5;
-    bodyMesh.castShadow = true;
-    this.mesh.add(bodyMesh);
+  private createRider(): void {
+    const charcoal = this.material(0x101820, 0.5);
+    const orange = this.material(0xe95b36, 0.46);
+    const navy = this.material(0x173849, 0.62);
+    const accent = this.material(0xe7ece7, 0.5);
+    const signal = this.material(0xd7ff45, 0.4);
+    const visor = new THREE.MeshPhysicalMaterial({ color: 0x071b28, roughness: 0.08, metalness: 0.52, clearcoat: 1, clearcoatRoughness: 0.06 });
 
-    // Belly
-    const bellyGeo = new THREE.SphereGeometry(0.36, 10, 10);
-    bellyGeo.scale(0.8, 0.8, 1.3);
-    const bellyMat = new THREE.MeshStandardMaterial({ color: colors.belly, flatShading: true });
-    const belly = new THREE.Mesh(bellyGeo, bellyMat);
-    belly.position.set(0, 0.45, 0.05);
-    this.mesh.add(belly);
+    // Prone torso: the long axis follows local +Z, the direction of flight.
+    const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.3, 0.76, 7, 14), orange);
+    torso.scale.set(0.94, 0.72, 1);
+    torso.position.set(0, 0.14, 0.05);
+    torso.rotation.x = Math.PI / 2;
+    torso.castShadow = true;
+    torso.name = 'rider-torso';
+    this.mesh.add(torso);
 
-    // 2. Head
-    const headGeo = new THREE.SphereGeometry(0.3, 10, 10);
-    const headMat = new THREE.MeshStandardMaterial({ color: colors.primary, flatShading: true });
-    const head = new THREE.Mesh(headGeo, headMat);
-    head.position.set(0, 0.9, 0.4);
-    head.castShadow = true;
-    this.mesh.add(head);
+    const shoulder = new THREE.Mesh(new THREE.CapsuleGeometry(0.18, 0.52, 5, 12), navy);
+    shoulder.rotation.z = Math.PI / 2;
+    shoulder.scale.set(1, 0.95, 0.72);
+    shoulder.position.set(0, 0.18, 0.28);
+    shoulder.castShadow = true;
+    shoulder.name = 'rider-shoulder-bridge';
+    this.mesh.add(shoulder);
 
-    // Eyes
-    const eyeGeo = new THREE.SphereGeometry(0.05, 6, 6);
-    const eyeMat = new THREE.MeshBasicMaterial({ color: 0x212121 });
-    const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
-    leftEye.position.set(0.18, 0.95, 0.6);
-    this.mesh.add(leftEye);
-    const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
-    rightEye.position.set(-0.18, 0.95, 0.6);
-    this.mesh.add(rightEye);
+    const hip = new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 0.28, 5, 10), charcoal);
+    hip.rotation.z = Math.PI / 2;
+    hip.position.set(0, 0.06, -0.43);
+    hip.name = 'rider-hip';
+    this.mesh.add(hip);
 
-    // 3. Beak
-    const beakGeo = new THREE.ConeGeometry(0.08, 0.3, 8);
-    const beakMat = new THREE.MeshStandardMaterial({ color: colors.beak, flatShading: true });
-    const beak = new THREE.Mesh(beakGeo, beakMat);
-    beak.rotation.x = -Math.PI / 2;
-    beak.position.set(0, 0.9, 0.75);
-    this.mesh.add(beak);
+    // The pack sits above the spine, not behind the rider along the flight axis.
+    const backpack = new THREE.Mesh(new THREE.CapsuleGeometry(0.23, 0.48, 5, 12), charcoal);
+    backpack.rotation.x = Math.PI / 2;
+    backpack.scale.set(1.05, 0.55, 1);
+    backpack.position.set(0, 0.39, -0.05);
+    backpack.castShadow = true;
+    backpack.name = 'rider-flight-pack';
+    this.mesh.add(backpack);
+    const packPanel = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.035, 0.42), signal);
+    packPanel.position.set(0, 0.55, -0.04);
+    packPanel.rotation.x = 0.04;
+    packPanel.name = 'rider-pack-signal-panel';
+    this.mesh.add(packPanel);
 
-    // 4. Crest feathers
-    const crestGeo = new THREE.ConeGeometry(0.06, 0.25, 4);
-    crestGeo.rotateX(-0.5);
-    const crestMat = new THREE.MeshStandardMaterial({ color: colors.crest, flatShading: true });
+    const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.245, 24, 16), accent);
+    helmet.scale.set(0.93, 0.94, 1.08);
+    helmet.position.set(0, 0.34, 0.72);
+    helmet.castShadow = true;
+    helmet.name = 'rider-helmet';
+    this.mesh.add(helmet);
+    const helmetCap = new THREE.Mesh(new THREE.SphereGeometry(0.25, 20, 12, 0, Math.PI * 2, 0, Math.PI * 0.48), orange);
+    helmetCap.position.copy(helmet.position);
+    helmetCap.scale.copy(helmet.scale);
+    helmetCap.rotation.x = -0.12;
+    helmetCap.name = 'rider-helmet-shell';
+    this.mesh.add(helmetCap);
+    const face = new THREE.Mesh(new THREE.SphereGeometry(0.222, 20, 12, -1.03, 2.06, 0.48, 1.2), visor);
+    face.position.set(0, 0.34, 0.79);
+    face.rotation.x = -0.12;
+    face.name = 'rider-visor';
+    this.mesh.add(face);
 
-    const crest1 = new THREE.Mesh(crestGeo, crestMat);
-    crest1.position.set(0, 1.15, 0.4);
-    this.mesh.add(crest1);
+    this.leftArm = this.createArm(-1, orange, charcoal);
+    this.rightArm = this.createArm(1, orange, charcoal);
+    this.leftLeg = this.createLeg(-1, navy, charcoal);
+    this.rightLeg = this.createLeg(1, navy, charcoal);
+    this.mesh.add(this.leftArm, this.rightArm, this.leftLeg, this.rightLeg);
 
-    const crest2 = crest1.clone();
-    crest2.scale.set(0.8, 0.8, 0.8);
-    crest2.rotation.x = -0.3;
-    crest2.position.set(0, 1.1, 0.25);
-    this.mesh.add(crest2);
+    const wingGeometry = new THREE.BufferGeometry();
+    wingGeometry.setAttribute('position', new THREE.Float32BufferAttribute([
+      -0.18,0.2,0.34, -1.28,0.12,-0.02, -0.37,0.02,-0.56,
+      -0.18,0.2,0.34, -0.37,0.02,-0.56, 0.37,0.02,-0.56,
+       0.18,0.2,0.34,  0.37,0.02,-0.56,  1.28,0.12,-0.02,
+      -0.34,0.03,-0.48, -0.21,-0.01,-1.42, 0.0,0.0,-0.72,
+       0.34,0.03,-0.48,  0.0,0.0,-0.72, 0.21,-0.01,-1.42,
+    ], 3));
+    wingGeometry.computeVertexNormals();
+    this.wingSuit = new THREE.Mesh(wingGeometry, new THREE.MeshStandardMaterial({ color: 0x1b7180, roughness: 0.78, side: THREE.DoubleSide }));
+    this.wingSuit.castShadow = true;
+    this.wingSuit.name = 'rider-wingsuit-membrane';
+    this.mesh.add(this.wingSuit);
 
-    // 5. Wings
-    this.leftWing = new THREE.Group();
-    this.rightWing = new THREE.Group();
+    const seam = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.025, 1.32), accent);
+    seam.position.set(0, 0.2, -0.06);
+    seam.name = 'rider-center-seam';
+    this.mesh.add(seam);
 
-    const wingGeo = new THREE.BufferGeometry();
-    const t = 0.05;
-    const wingVertices = new Float32Array([
-      0, t, 0,    0.5, t, 0.3,   0, t, 0.5,
-      0.5, t, 0.3,  0.9, t, 0.15,  0, t, 0.5,
-      0.9, t, 0.15,  1.2, t, -0.1,  0, t, 0.5,
-      1.2, t, -0.1,  1.3, t, -0.3,  0.5, t, 0.15,
-      0, -t, 0,   0, -t, 0.5,   0.5, -t, 0.3,
-      0.5, -t, 0.3,  0, -t, 0.5,  0.9, -t, 0.15,
-      0.9, -t, 0.15,  0, -t, 0.5,  1.2, -t, -0.1,
-      1.2, -t, -0.1,  0.5, -t, 0.15,  1.3, -t, -0.3,
-    ]);
-    const wingIndices = [
-      0, 1, 2,   3, 4, 5,   6, 7, 8,   9, 10, 11,
-      12, 13, 14,  15, 16, 17,  18, 19, 20,  21, 22, 23,
-    ];
-    wingGeo.setAttribute('position', new THREE.BufferAttribute(wingVertices, 3));
-    wingGeo.setIndex(wingIndices);
-    wingGeo.computeVertexNormals();
+    for (const side of [-1, 1]) {
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.025, 0.62), signal);
+      stripe.position.set(side * 0.18, 0.25, 0.03);
+      stripe.name = side < 0 ? 'rider-left-signal-stripe' : 'rider-right-signal-stripe';
+      this.mesh.add(stripe);
+    }
 
-    const wingMat = new THREE.MeshStandardMaterial({
-      color: colors.secondary,
-      side: THREE.DoubleSide,
-      flatShading: true
-    });
-
-    const lWingMesh = new THREE.Mesh(wingGeo, wingMat);
-    const rWingMesh = new THREE.Mesh(wingGeo, wingMat);
-    rWingMesh.scale.x = -1;
-
-    this.leftWing.add(lWingMesh);
-    this.rightWing.add(rWingMesh);
-
-    this.leftWing.position.set(0.2, 0.6, 0.2);
-    this.rightWing.position.set(-0.2, 0.6, 0.2);
-
-    this.mesh.add(this.leftWing);
-    this.mesh.add(this.rightWing);
-
-    // 6. Tail feathers
-    const tailGeo = new THREE.ConeGeometry(0.2, 0.6, 4);
-    tailGeo.scale(1, 0.2, 1);
-    const tailMat = new THREE.MeshStandardMaterial({ color: colors.secondary, flatShading: true });
-    const tail = new THREE.Mesh(tailGeo, tailMat);
-    tail.position.set(0, 0.5, -0.8);
-    tail.rotation.x = -Math.PI / 2 + 0.3;
-    this.mesh.add(tail);
-
-    // 7. Spotlight
-    const light = new THREE.SpotLight(0xffffff, 2, 25, 0.6, 0.5, 1);
-    light.position.set(0, 0.8, 0.5);
-    light.target.position.set(0, 0, 6);
-    this.mesh.add(light);
-    this.mesh.add(light.target);
-
-    // 8. Flight trails
-    this.trails = [];
-    this.trailTime = 0;
-    for (let i = 0; i < 4; i++) {
-      const scale = 1.0 - i * 0.2;
-      const opacity = 0.7 - i * 0.15;
-      const trailGeo = new THREE.SphereGeometry(0.08 * scale, 6, 6);
-      const trailMat = new THREE.MeshBasicMaterial({
-        color: 0x4fc3f7,
-        transparent: true,
-        opacity: opacity
-      });
-      const trail = new THREE.Mesh(trailGeo, trailMat);
-      trail.position.set(0, 0.4, -0.9 - i * 0.25);
-      trail.visible = false;
+    const trailMaterial = new THREE.MeshBasicMaterial({ color: 0xb8f7ff, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending });
+    for (const x of [-0.22, 0.22]) {
+      const trail = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.12, 4.8, 7, 1, true), trailMaterial.clone());
+      trail.rotation.x = Math.PI / 2;
+      trail.position.set(x, 0.02, -3.7);
+      trail.name = x < 0 ? 'rider-left-contrail' : 'rider-right-contrail';
       this.mesh.add(trail);
-      this.trails.push(trail);
+      this.contrails.push(trail);
     }
 
-    this.scene.add(this.mesh);
+    this.mesh.userData.modelManifest = {
+      subject: 'powered wingsuit athlete',
+      signature: ['prone human silhouette', 'back-mounted flight pack', 'arm-to-hip membranes', 'split tail membrane', 'helmet and visor'],
+      semanticParts: ['torso', 'helmet', 'visor', 'flight-pack', 'left-arm', 'right-arm', 'left-leg', 'right-leg', 'wingsuit-membrane', 'contrails'],
+      forwardAxis: '+Z',
+      generationMethod: 'procedural hierarchical scene graph',
+    };
   }
 
-  setSprinting(isSprinting: boolean): void {
-    this.isSprinting = isSprinting;
-    if (this.body.velocity.y >= 0) {
-      this.currentSpeed = isSprinting ? this.sprintSpeed : this.speed;
-    }
+  private createArm(side: number, suitMaterial: THREE.Material, gloveMaterial: THREE.Material): THREE.Group {
+    const pivot = new THREE.Group();
+    pivot.name = side < 0 ? 'rider-left-arm' : 'rider-right-arm';
+    pivot.position.set(side * 0.26, 0.2, 0.27);
+    pivot.rotation.y = side * -0.12;
+
+    const upper = new THREE.Mesh(new THREE.CapsuleGeometry(0.105, 0.43, 5, 10), suitMaterial);
+    upper.rotation.z = Math.PI / 2;
+    upper.position.set(side * 0.3, 0, -0.01);
+    upper.castShadow = true;
+    pivot.add(upper);
+
+    const forearm = new THREE.Mesh(new THREE.CapsuleGeometry(0.09, 0.42, 5, 10), suitMaterial);
+    forearm.rotation.z = Math.PI / 2;
+    forearm.position.set(side * 0.76, -0.025, -0.12);
+    forearm.castShadow = true;
+    pivot.add(forearm);
+
+    const glove = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 8), gloveMaterial);
+    glove.scale.set(1.3, 0.68, 0.85);
+    glove.position.set(side * 1.03, -0.03, -0.18);
+    pivot.add(glove);
+    return pivot;
   }
 
-  setFlying(isFlying: boolean): void {
-    this.isFlying = isFlying;
-    this.trails.forEach(t => t.visible = isFlying);
+  private createLeg(side: number, suitMaterial: THREE.Material, bootMaterial: THREE.Material): THREE.Group {
+    const pivot = new THREE.Group();
+    pivot.name = side < 0 ? 'rider-left-leg' : 'rider-right-leg';
+    pivot.position.set(side * 0.18, 0.03, -0.4);
+    pivot.rotation.y = side * -0.08;
+
+    const thigh = new THREE.Mesh(new THREE.CapsuleGeometry(0.13, 0.48, 5, 10), suitMaterial);
+    thigh.rotation.x = Math.PI / 2;
+    thigh.position.set(side * 0.025, 0, -0.31);
+    thigh.castShadow = true;
+    pivot.add(thigh);
+
+    const shin = new THREE.Mesh(new THREE.CapsuleGeometry(0.105, 0.44, 5, 10), suitMaterial);
+    shin.rotation.x = Math.PI / 2;
+    shin.position.set(side * 0.055, -0.015, -0.78);
+    shin.castShadow = true;
+    pivot.add(shin);
+
+    const boot = new THREE.Mesh(new THREE.CapsuleGeometry(0.115, 0.24, 5, 10), bootMaterial);
+    boot.rotation.x = Math.PI / 2;
+    boot.scale.set(0.9, 0.72, 1.15);
+    boot.position.set(side * 0.07, -0.035, -1.15);
+    pivot.add(boot);
+    return pivot;
   }
+
+  setSprinting(value: boolean): void { this.sprinting = value && this.boost > 0.02; }
+  setFlying(value: boolean): void { this.flaring = value; }
 
   move(direction: THREE.Vector3, deltaTime: number): void {
-    const len = Math.sqrt(direction.x * direction.x + direction.z * direction.z);
-    this.isMoving = len > 0;
-
-    let targetVx = 0;
-    let targetVz = 0;
-
-    if (this.isMoving) {
-      const dx = direction.x / len;
-      const dz = direction.z / len;
-      targetVx = dx * this.currentSpeed;
-      targetVz = dz * this.currentSpeed;
-      this.targetRotation = Math.atan2(dx, dz);
+    const horizontalLength = Math.hypot(direction.x, direction.z);
+    this.moving = horizontalLength > 0.01;
+    if (this.moving) {
+      direction.x /= horizontalLength;
+      direction.z /= horizontalLength;
+      const desiredRotation = Math.atan2(direction.x, direction.z);
+      let inputDiff = desiredRotation - this.targetRotation;
+      while (inputDiff > Math.PI) inputDiff -= Math.PI * 2;
+      while (inputDiff < -Math.PI) inputDiff += Math.PI * 2;
+      this.targetRotation += inputDiff * Math.min(1, deltaTime * 4.2);
     }
 
-    const hLerp = 5 * deltaTime;
-    this.body.velocity.x = THREE.MathUtils.lerp(this.body.velocity.x, targetVx, hLerp);
-    this.body.velocity.z = THREE.MathUtils.lerp(this.body.velocity.z, targetVz, hLerp);
+    const descentEnergy = THREE.MathUtils.clamp(-this.body.velocity.y / 36, 0, 1);
+    const targetSpeed = this.sprinting ? 76 : 36 + descentEnergy * 18;
+    this.speed = THREE.MathUtils.damp(this.speed, targetSpeed, 2.2, deltaTime);
+    if (this.sprinting) this.boost = Math.max(0, this.boost - deltaTime * 0.11);
+    else this.boost = Math.min(1, this.boost + deltaTime * 0.09);
 
-    if (this.isFlying) {
-      const maxVerticalSpeed = 80;
-      this.body.velocity.y += 80 * deltaTime;
-      if (this.body.velocity.y > maxVerticalSpeed) {
-        this.body.velocity.y = maxVerticalSpeed;
-      }
-    } else {
-      if (this.body.velocity.y < 0) {
-        if (this.isMoving) {
-          const dropSpeed = Math.abs(this.body.velocity.y);
-          const glideBoost = Math.min(dropSpeed * 0.8, 20);
-          const targetGlideSpeed = (this.isSprinting ? this.sprintSpeed : this.speed) + glideBoost;
-          this.currentSpeed = THREE.MathUtils.lerp(this.currentSpeed, targetGlideSpeed, 1 * deltaTime);
+    const forwardX = Math.sin(this.targetRotation);
+    const forwardZ = Math.cos(this.targetRotation);
+    this.body.velocity.x = THREE.MathUtils.damp(this.body.velocity.x, forwardX * this.speed, 3.1, deltaTime);
+    this.body.velocity.z = THREE.MathUtils.damp(this.body.velocity.z, forwardZ * this.speed, 3.1, deltaTime);
 
-          const liftFactor = Math.min(this.currentSpeed / this.sprintSpeed, 1.0);
-          const terminalVelocity = THREE.MathUtils.lerp(-40, -5, liftFactor);
-
-          if (this.body.velocity.y < terminalVelocity) {
-            this.body.velocity.y = THREE.MathUtils.lerp(this.body.velocity.y, terminalVelocity, 3 * deltaTime);
-          }
-        } else {
-          this.currentSpeed = THREE.MathUtils.lerp(this.currentSpeed, this.speed, 2 * deltaTime);
-        }
-      } else {
-        this.currentSpeed = THREE.MathUtils.lerp(this.currentSpeed, this.isSprinting ? this.sprintSpeed : this.speed, 5 * deltaTime);
-      }
+    if (this.flaring) {
+      // Powered free flight: Space is deliberate climb, not merely a landing flare.
+      // The impulse exceeds gravity so the player can choose and hold a positive climb rate.
+      this.body.velocity.y = Math.min(38, this.body.velocity.y + 72 * deltaTime);
+    } else if (this.body.velocity.y < -7) {
+      // Aerodynamic lift counters most of gravity and settles near a shallow glide rate.
+      this.body.velocity.y = Math.min(-7, this.body.velocity.y + 46 * deltaTime);
     }
 
-    let rotDiff = this.targetRotation - this.mesh.rotation.y;
-    while (rotDiff > Math.PI) rotDiff -= Math.PI * 2;
-    while (rotDiff < -Math.PI) rotDiff += Math.PI * 2;
-    this.mesh.rotation.y += rotDiff * 8 * deltaTime;
+    let rotationDiff = this.targetRotation - this.mesh.rotation.y;
+    while (rotationDiff > Math.PI) rotationDiff -= Math.PI * 2;
+    while (rotationDiff < -Math.PI) rotationDiff += Math.PI * 2;
+    this.turnAmount = THREE.MathUtils.damp(this.turnAmount, THREE.MathUtils.clamp(rotationDiff * 2.4, -1, 1), 5, deltaTime);
+    this.mesh.rotation.y += rotationDiff * Math.min(1, deltaTime * 6.5);
+    this.mesh.rotation.z = THREE.MathUtils.damp(this.mesh.rotation.z, -this.turnAmount * 0.72, 5.2, deltaTime);
+    const climbFactor = THREE.MathUtils.clamp(this.body.velocity.y / 38, 0, 1);
+    const pitch = this.flaring ? THREE.MathUtils.lerp(-0.16, -0.42, climbFactor) : THREE.MathUtils.lerp(0.06, 0.4, descentEnergy);
+    this.mesh.rotation.x = THREE.MathUtils.damp(this.mesh.rotation.x, pitch, 3.5, deltaTime);
 
-    let targetPitch = 0;
-    if (this.isMoving && (this.isSprinting || this.isFlying)) targetPitch = 0.5;
-    if (!this.isFlying && this.body.velocity.y < -5 && this.isMoving) targetPitch = 0.8;
-    this.mesh.rotation.x = THREE.MathUtils.lerp(this.mesh.rotation.x, targetPitch, 4 * deltaTime);
-
-    let targetRoll = -rotDiff * 0.8;
-    targetRoll = Math.max(-0.8, Math.min(0.8, targetRoll));
-    if (!this.isMoving) targetRoll = 0;
-    this.mesh.rotation.z = THREE.MathUtils.lerp(this.mesh.rotation.z, targetRoll, 4 * deltaTime);
-
-    this.animateWings(deltaTime);
-  }
-
-  private animateWings(deltaTime: number): void {
-    let targetFlapSpeed = 0;
-    let flapAmplitude = 0.4;
-
-    if (this.isFlying) {
-      targetFlapSpeed = 18;
-      flapAmplitude = 0.9;
-    } else if (this.isMoving) {
-      if (this.body.velocity.y < -2) {
-        targetFlapSpeed = 0;
-        flapAmplitude = 0;
-        this.wingAngle = Math.PI / 2;
-      } else {
-        targetFlapSpeed = 8;
-        flapAmplitude = 0.3;
-      }
-    } else {
-      targetFlapSpeed = 2;
-      flapAmplitude = 0.1;
-    }
-
-    if (flapAmplitude > 0) {
-      this.flapSpeed = THREE.MathUtils.lerp(this.flapSpeed, targetFlapSpeed, 5 * deltaTime);
-      this.wingAngle += this.flapSpeed * deltaTime;
-      const angle = Math.sin(this.wingAngle) * flapAmplitude;
-      this.leftWing.rotation.z = angle;
-      this.rightWing.rotation.z = -angle;
-    } else {
-      this.leftWing.rotation.z = THREE.MathUtils.lerp(this.leftWing.rotation.z, 0, 5 * deltaTime);
-      this.rightWing.rotation.z = THREE.MathUtils.lerp(this.rightWing.rotation.z, 0, 5 * deltaTime);
-    }
+    const pose = this.flaring ? -0.2 : this.sprinting ? 0.12 : 0;
+    this.leftArm.rotation.z = THREE.MathUtils.damp(this.leftArm.rotation.z, pose, 4, deltaTime);
+    this.rightArm.rotation.z = THREE.MathUtils.damp(this.rightArm.rotation.z, -pose, 4, deltaTime);
+    this.leftLeg.rotation.z = THREE.MathUtils.damp(this.leftLeg.rotation.z, -0.13 - this.turnAmount * 0.08, 4, deltaTime);
+    this.rightLeg.rotation.z = THREE.MathUtils.damp(this.rightLeg.rotation.z, 0.13 - this.turnAmount * 0.08, 4, deltaTime);
   }
 
   update(): void {
-    this.mesh.position.copy(this.body.position as unknown as THREE.Vector3);
-    this.mesh.position.y -= 0.4;
+    this.mesh.position.set(this.body.position.x, this.body.position.y - 0.15, this.body.position.z);
   }
 
   updateTrail(deltaTime: number): void {
     this.trailTime += deltaTime;
-    for (let i = 0; i < this.trails.length; i++) {
-      const trail = this.trails[i];
-      if (!trail.visible) continue;
-      trail.position.x = Math.sin(this.trailTime * 8 + i * 1.5) * 0.05;
-      trail.position.y = 0.4 + Math.cos(this.trailTime * 6 + i * 1.2) * 0.03;
-      const baseOpacity = 0.7 - i * 0.15;
-      (trail.material as THREE.MeshBasicMaterial).opacity = baseOpacity * (0.7 + 0.3 * Math.sin(this.trailTime * 10 + i * 2));
+    const intensity = THREE.MathUtils.clamp((this.getSpeedKmh() - 120) / 100, 0, 0.7) * (0.8 + Math.sin(this.trailTime * 11) * 0.12);
+    this.contrails.forEach((trail) => { (trail.material as THREE.MeshBasicMaterial).opacity = intensity; });
+  }
+
+  emergencyGroundCheck(world: WorldManagerInterface): void {
+    const terrain = world.getHeightAt(this.body.position.x, this.body.position.z);
+    if (this.body.position.y < terrain + 1.2) {
+      this.body.position.y = terrain + 1.2;
+      if (this.body.velocity.y < 0) this.body.velocity.y = Math.min(7, Math.abs(this.body.velocity.y) * 0.12);
     }
   }
 
-  emergencyGroundCheck(worldManager: WorldManagerInterface): void {
-    if (this.body.velocity.y < -30) {
-      const terrainH = worldManager.getHeightAt(this.body.position.x, this.body.position.z);
-      if (this.body.position.y < terrainH + 1) {
-        this.body.position.y = terrainH + 1;
-        this.body.velocity.y = 0;
-      }
-    }
-  }
-
-  getPosition(): THREE.Vector3 {
-    return this.mesh.position;
-  }
-
+  getPosition(): THREE.Vector3 { return this.mesh.position; }
+  getVelocity(): THREE.Vector3 { return new THREE.Vector3(this.body.velocity.x, this.body.velocity.y, this.body.velocity.z); }
+  getSpeedKmh(): number { return Math.hypot(this.body.velocity.x, this.body.velocity.y, this.body.velocity.z) * 3.6; }
+  getBoost(): number { return this.boost; }
+  getTurnAmount(): number { return this.turnAmount; }
   setPosition(x: number, y: number, z: number): void {
     this.body.position.set(x, y, z);
-    this.body.velocity.set(0, 0, 0);
+    this.body.velocity.set(0, -2, 25);
     this.mesh.position.set(x, y, z);
+    this.targetRotation = 0;
+    this.mesh.rotation.set(0, 0, 0);
   }
 }

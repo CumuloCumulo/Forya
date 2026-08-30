@@ -8,10 +8,10 @@ export class ColorCalculator {
   private colorNoise: SimplexNoise;
 
   constructor(seed: number) {
+    let state = (seed + 999) >>> 0;
     this.colorNoise = new SimplexNoise(() => {
-      let s = seed + 999;
-      s = (s * 1664525 + 1013904223) & 0xffffffff;
-      return (s >>> 0) / 0xffffffff;
+      state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+      return state / 0x100000000;
     });
   }
 
@@ -32,7 +32,7 @@ export class ColorCalculator {
 
     // 1. Steep slopes → rock/cliff
     if (slope > 0.7) {
-      color.setHex(0x8d8d8d);
+      color.setHex(0x5d6567);
       const rockVar = this.colorNoise.noise2D(worldX * 0.1, worldZ * 0.1) * 0.1;
       color.r = Math.max(0, Math.min(1, color.r + nv + rockVar));
       color.g = Math.max(0, Math.min(1, color.g + nv + rockVar * 0.8));
@@ -64,38 +64,38 @@ export class ColorCalculator {
     // 5. Height-based coloring with slope blending
     if (height > 100) {
       // Snow
-      color.setHex(0xffffff);
+      color.setHex(0xe8f1ef);
       if (height < 130) {
-        color.lerp(new THREE.Color(0x9e9e9e), 0.4);
+        color.lerp(new THREE.Color(0x89918f), 0.34);
       }
     } else if (height > 60) {
       // Rock / snow transition
-      color.setHex(0x9e9e9e);
+      color.setHex(0x777e7c);
       const snowBlend = (height - 60) / 40;
-      color.lerp(new THREE.Color(0xffffff), snowBlend * 0.5);
+      color.lerp(new THREE.Color(0xe8f1ef), snowBlend * 0.62);
     } else if (height > 30) {
       // Rock / sparse vegetation
-      color.setHex(0x757575);
+      color.setHex(0x626a64);
       if (slope < 0.3) {
-        color.lerp(new THREE.Color(0x558b2f), 0.3);
+        color.lerp(new THREE.Color(0x486944), 0.28);
       }
     } else if (height > 5) {
       // Grassland
       const pathNoise = this.colorNoise.noise2D(worldX * 0.1, worldZ * 0.1);
       if (pathNoise > 0.25) {
-        color.setHex(0x795548); // Dirt path
+        color.setHex(0x615643); // exposed alpine soil
       } else {
-        color.setHex(0x558b2f); // Green grass
+        color.setHex(0x3f693e); // alpine grass
       }
       // Blend toward rock on slopes
       if (slope > 0.3) {
         const rockBlend = (slope - 0.3) / 0.4;
-        color.lerp(new THREE.Color(0x757575), rockBlend);
+        color.lerp(new THREE.Color(0x646b67), rockBlend);
       }
     } else {
       // Low areas near water - marsh/sand
-      color.setHex(0x6b8e23);
-      color.lerp(new THREE.Color(0xc2b280), 0.3);
+      color.setHex(0x4e7041);
+      color.lerp(new THREE.Color(0x9e936d), 0.25);
     }
 
     // Add noise variation

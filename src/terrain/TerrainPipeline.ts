@@ -1,15 +1,25 @@
 // TerrainPipeline - Simplified wrapper around DensityField
 // Replaces the old CellSystem + TerrainPopulators approach
 import { DensityField } from './DensityField';
-import { ColorCalculator } from './ColorCalculator';
+import { SimplexNoise } from '../noise/SimplexNoise';
 
 export class TerrainPipeline {
   private densityField: DensityField;
-  private colorCalc: ColorCalculator;
+  private biomeNoise: SimplexNoise;
+  private detailNoise: SimplexNoise;
 
   constructor(private seed: number) {
     this.densityField = new DensityField(seed);
-    this.colorCalc = new ColorCalculator(seed + 3000);
+    this.biomeNoise = new SimplexNoise(this.createRandom(seed + 3000));
+    this.detailNoise = new SimplexNoise(this.createRandom(seed + 7000));
+  }
+
+  private createRandom(seed: number): () => number {
+    let state = seed >>> 0;
+    return () => {
+      state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+      return state / 0x100000000;
+    };
   }
 
   getDensityField(): DensityField {
@@ -24,7 +34,14 @@ export class TerrainPipeline {
     return this.densityField.surfaceHeight(x, z);
   }
 
-  getColorCalculator(): ColorCalculator {
-    return this.colorCalc;
+  getForestDensity(x: number, z: number): number {
+    const broad = this.biomeNoise.fbm2D(x * 0.0035, z * 0.0035, 4, 2.05, 0.52);
+    const edge = this.detailNoise.noise2D(x * 0.011, z * 0.011);
+    return Math.max(0, Math.min(1, (broad * 0.76 + edge * 0.24 + 0.36) / 0.88));
+  }
+
+  getRockDensity(x: number, z: number): number {
+    const broad = this.biomeNoise.fbm2D(x * 0.005 + 97, z * 0.005 - 53, 3, 2.1, 0.55);
+    return Math.max(0, Math.min(1, broad * 0.65 + 0.42));
   }
 }

@@ -3,182 +3,153 @@ import { PhysicsWorld } from './PhysicsWorld';
 import { Player } from './Player';
 import { WorldManager } from './terrain/WorldManager';
 import { CameraManager } from './CameraManager';
+import { Environment } from './Environment';
+import { RouteSystem } from './RouteSystem';
+import { HUD } from './HUD';
 
 export class Game {
-  private scene: THREE.Scene;
-  private renderer!: THREE.WebGLRenderer;
+  private scene = new THREE.Scene();
+  private renderer: THREE.WebGLRenderer;
   private cameraManager: CameraManager;
-  private camera: THREE.PerspectiveCamera;
-  private physics: PhysicsWorld;
+  private physics = new PhysicsWorld();
   private worldManager: WorldManager;
   private player: Player;
-  private sunLight: THREE.DirectionalLight;
-  private keys: Record<string, boolean>;
-  private clock: THREE.Clock;
+  private environment: Environment;
+  private route: RouteSystem;
+  private hud = new HUD();
+  private keys: Record<string, boolean> = {};
+  private timer = new THREE.Timer();
+  private frameRequest = 0;
+  private active = false;
+  private previewTime = 0;
+  private previewFocus = new THREE.Vector3();
 
   constructor() {
-    this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0xffd59e);
-    this.scene.fog = new THREE.Fog(0xffd59e, 200, 480);
-
-    this.setupRenderer();
-
+    this.renderer = this.setupRenderer();
     this.cameraManager = new CameraManager(this.renderer);
-    this.camera = this.cameraManager.camera;
-
-    this.physics = new PhysicsWorld();
-
     this.worldManager = new WorldManager(this.scene, this.physics);
-
+    this.environment = new Environment(this.scene);
     this.player = new Player(this.scene, this.physics);
-
-    const initialH = this.worldManager.getHeightAt(0, 0);
-    this.player.setPosition(0, initialH + 72, 0);
-
-    this.sunLight = this.setupLights();
-
-    this.keys = {};
+    this.route = new RouteSystem(this.scene, this.worldManager);
+    this.respawnPlayer();
+    this.player.mesh.visible = false;
+    this.route.setVisible(false);
+    this.previewFocus.set(0, this.worldManager.getHeightAt(90, 150) + 22, 150);
     this.setupInput();
-
-    window.addEventListener('resize', () => this.onResize());
-
-    this.clock = new THREE.Clock();
+    window.addEventListener('resize', this.onResize);
   }
 
-  private setupRenderer(): void {
-    this.renderer = new THREE.WebGLRenderer({
+  private setupRenderer(): THREE.WebGLRenderer {
+    const renderer = new THREE.WebGLRenderer({
       canvas: document.getElementById('game-canvas') as HTMLCanvasElement,
       antialias: true,
-      powerPreference: "high-performance"
+      powerPreference: 'high-performance',
+      alpha: false,
     });
-    this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-
-    this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.1;
-  }
-
-  private setupLights(): THREE.DirectionalLight {
-    const ambientLight = new THREE.AmbientLight(0xffe0b2, 0.7);
-    this.scene.add(ambientLight);
-
-    const sunLight = new THREE.DirectionalLight(0xffa000, 1.8);
-    sunLight.position.set(50, 40, 30);
-    sunLight.castShadow = true;
-
-    sunLight.shadow.mapSize.width = 2048;
-    sunLight.shadow.mapSize.height = 2048;
-    sunLight.shadow.camera.near = 0.5;
-    sunLight.shadow.camera.far = 200;
-    const d = 80;
-    sunLight.shadow.camera.left = -d;
-    sunLight.shadow.camera.right = d;
-    sunLight.shadow.camera.top = d;
-    sunLight.shadow.camera.bottom = -d;
-    sunLight.shadow.bias = -0.0005;
-
-    this.scene.add(sunLight);
-    this.scene.add(sunLight.target);
-
-    const fillLight = new THREE.DirectionalLight(0xd1c4e9, 0.4);
-    fillLight.position.set(-30, 20, -30);
-    this.scene.add(fillLight);
-
-    const hemiLight = new THREE.HemisphereLight(0xffe0b2, 0x8d6e63, 0.4);
-    this.scene.add(hemiLight);
-
-    return sunLight;
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.08;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
+    return renderer;
   }
 
   private setupInput(): void {
-    window.addEventListener('keydown', (e: KeyboardEvent) => {
-      this.keys[e.code] = true;
-      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) {
-        e.preventDefault();
-      }
+    window.addEventListener('keydown', (event) => {
+      this.keys[event.code] = true;
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(event.code)) event.preventDefault();
+      if (event.code === 'KeyR') this.respawnPlayer();
     });
-
-    window.addEventListener('keyup', (e: KeyboardEvent) => {
-      this.keys[e.code] = false;
-    });
-
-    window.addEventListener('blur', () => {
-      this.keys = {};
-    });
+    window.addEventListener('keyup', (event) => { this.keys[event.code] = false; });
+    window.addEventListener('blur', () => { this.keys = {}; });
   }
 
-  private onResize(): void {
+  private onResize = (): void => {
     this.cameraManager.onResize();
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-  }
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
+  };
 
   private update(deltaTime: number): void {
-    const playerPos = this.player.getPosition();
+    const beforePhysics = this.player.getPosition();
+    this.worldManager.update(beforePhysics, deltaTime);
 
-    this.worldManager.update(playerPos, deltaTime);
-
-    const moveDir = new THREE.Vector3();
+    const moveDirection = new THREE.Vector3();
     const forward = this.cameraManager.getForwardVector();
     const right = this.cameraManager.getRightVector();
+    if (this.keys.KeyW || this.keys.ArrowUp) moveDirection.add(forward);
+    if (this.keys.KeyS || this.keys.ArrowDown) moveDirection.sub(forward);
+    if (this.keys.KeyA || this.keys.ArrowLeft) moveDirection.sub(right);
+    if (this.keys.KeyD || this.keys.ArrowRight) moveDirection.add(right);
 
-    if (this.keys['KeyW'] || this.keys['ArrowUp']) moveDir.add(forward);
-    if (this.keys['KeyS'] || this.keys['ArrowDown']) moveDir.sub(forward);
-    if (this.keys['KeyA'] || this.keys['ArrowLeft']) moveDir.sub(right);
-    if (this.keys['KeyD'] || this.keys['ArrowRight']) moveDir.add(right);
-
-    const isSprinting = this.keys['ShiftLeft'] || this.keys['ShiftRight'];
-    this.player.setSprinting(isSprinting);
-
-    const isFlying = this.keys['Space'];
-    this.player.setFlying(isFlying);
-
-    this.player.move(moveDir, deltaTime);
-
+    this.player.setSprinting(Boolean(this.keys.ShiftLeft || this.keys.ShiftRight));
+    this.player.setFlying(Boolean(this.keys.Space));
+    this.player.move(moveDirection, deltaTime);
     this.physics.update(deltaTime);
-
     this.player.emergencyGroundCheck(this.worldManager);
-
     this.player.update();
     this.player.updateTrail(deltaTime);
 
-    this.sunLight.position.set(playerPos.x + 50, playerPos.y + 40, playerPos.z + 30);
-    this.sunLight.target.position.set(playerPos.x, playerPos.y, playerPos.z);
+    const position = this.player.getPosition();
+    const velocity = this.player.getVelocity();
+    this.route.update(position, deltaTime);
+    this.environment.update(position, deltaTime);
+    this.cameraManager.update(
+      position,
+      velocity,
+      deltaTime,
+      this.player.getTurnAmount(),
+      (x, z) => this.worldManager.getHeightAt(x, z),
+    );
+    this.hud.update({
+      speedKmh: this.player.getSpeedKmh(),
+      altitude: position.y,
+      verticalSpeed: velocity.y,
+      boost: this.player.getBoost(),
+      checkpoint: this.route.getProgress(),
+      checkpointTotal: this.route.getTotal(),
+      objectiveDistance: this.route.getDistance(position),
+    }, deltaTime);
 
-    let turnFactor = 0;
-    if (this.keys['KeyA'] || this.keys['ArrowLeft']) turnFactor += 1;
-    if (this.keys['KeyD'] || this.keys['ArrowRight']) turnFactor -= 1;
-
-    this.cameraManager.update(playerPos, deltaTime, turnFactor);
-
-    if (playerPos.y < -50) {
-      this.respawnPlayer();
-    }
+    const terrain = this.worldManager.getHeightAt(position.x, position.z);
+    if (position.y < terrain - 20 || position.y < -220) this.respawnPlayer();
   }
 
   private respawnPlayer(): void {
-    console.log("跌落深渊，重生！");
-    const h = this.worldManager.getHeightAt(0, 0);
-    this.player.setPosition(0, h + 72, 0);
+    const terrain = this.worldManager.getHeightAt(0, 0);
+    this.player.setPosition(0, terrain + 82, 0);
   }
 
-  private render(): void {
-    this.renderer.render(this.scene, this.camera);
-  }
-
-  private gameLoop(): void {
-    const deltaTime = Math.min(this.clock.getDelta(), 0.1);
-    this.update(deltaTime);
-    this.render();
-    requestAnimationFrame(() => this.gameLoop());
-  }
+  private loop = (): void => {
+    this.timer.update();
+    const deltaTime = Math.min(this.timer.getDelta(), 0.05);
+    if (this.active) this.update(deltaTime);
+    else this.updatePreview(deltaTime);
+    this.renderer.render(this.scene, this.cameraManager.camera);
+    this.frameRequest = requestAnimationFrame(this.loop);
+  };
 
   start(): void {
-    console.log('🏔️ 山地探险 - 无限世界版启动！');
-    console.log('点击屏幕锁定鼠标以旋转视角');
-    console.log('按住 Space 飞行！');
-    this.gameLoop();
+    if (this.frameRequest) return;
+    this.timer.reset();
+    this.frameRequest = requestAnimationFrame(this.loop);
+  }
+
+  activate(): void {
+    if (this.active) return;
+    this.active = true;
+    this.player.mesh.visible = true;
+    this.route.setVisible(true);
+    this.respawnPlayer();
+    this.cameraManager.reset();
+  }
+
+  private updatePreview(deltaTime: number): void {
+    this.previewTime += deltaTime;
+    this.worldManager.update(this.previewFocus, deltaTime);
+    this.environment.update(this.previewFocus, deltaTime);
+    this.cameraManager.updateCinematic(this.previewFocus, this.previewTime);
   }
 }

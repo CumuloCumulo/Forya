@@ -1,28 +1,44 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>极限国度</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#07131d">
+  <title>FORΞA — Alpine Flight</title>
   <link rel="stylesheet" href="./styles/main.css">
 </head>
 <body>
-  <canvas id="game-canvas"></canvas>
+  <canvas id="game-canvas" aria-label="Forya 3D alpine flight game"></canvas>
   <div id="ui">
-    <div id="start-screen" class="screen active">
-      <div class="content">
-        <h1>⛰️ 极限国度</h1>
-        <p>探索无尽的山脉与云海</p>
-        <button id="start-btn" class="btn">开始旅程</button>
+    <section id="start-screen" class="screen active">
+      <div class="start-atmosphere"></div>
+      <div class="start-copy">
+        <div class="eyebrow"><span></span> FORYA / ALPINE DISTRICT 01</div>
+        <h1>追逐<br><em>地平线</em></h1>
+        <p>自由决定方向、高度与速度，飞越山脊、云海与针叶林。</p>
+        <button id="start-btn" class="primary-action"><span>进入自由飞行</span><b>→</b></button>
+        <div class="start-meta"><span>程序化开放山地</span><span>自由爬升与加速</span><span>可选远程航标</span></div>
       </div>
-    </div>
-    
-    <div class="controls-hint hidden">
-      <h3>🏔️ 探险指南</h3>
-      <p><span class="key">WASD</span> 移动</p>
-      <p><span class="key">Shift</span> 加速</p>
-      <p><span class="key">Space</span> 飞行/滑翔</p>
-    </div>
+      <div class="version-mark">PRE-ALPHA<br>BUILD 0.2</div>
+    </section>
+    <section id="hud" class="hud hidden" aria-live="polite">
+      <div class="topbar">
+        <div class="brand">FORΞA</div>
+        <div class="route-state"><small>远程探索航标</small><strong><span id="checkpoint-current">01</span><i>/</i><span id="checkpoint-total">08</span></strong></div>
+        <div id="performance-tier" class="performance-tier">LIVE</div>
+      </div>
+      <div class="velocity-panel">
+        <div class="speed"><strong id="speed-value">000</strong><span>KM/H</span></div>
+        <div class="altitude"><span>海拔</span><strong id="altitude-value">0000 M</strong><em id="vertical-value">— 00 M/S</em></div>
+      </div>
+      <div class="boost-panel"><span>ADRENALINE</span><div class="boost-track"><i id="boost-fill"></i></div></div>
+      <div id="objective" class="objective">
+        <span class="objective-index">01</span><div><small>可选航标</small><strong>自由飞行至远方山门</strong></div><b id="objective-distance">— M</b>
+      </div>
+      <div class="reticle"><i></i><i></i><span></span></div>
+      <div class="controls-hint"><span><kbd>WASD</kbd> 转向</span><span><kbd>SHIFT</kbd> 加速</span><span><kbd>SPACE</kbd> 拉升</span><span><kbd>R</kbd> 重生</span></div>
+    </section>
+    <div id="toast" class="toast"><span>CHECKPOINT</span><strong>线路保持</strong></div>
   </div>
   <script type="module" src="./src/main.ts"></script>
 </body>
