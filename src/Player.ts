@@ -218,6 +218,8 @@ export class Player {
   setFlying(value: boolean): void { this.flaring = value; }
 
   move(direction: THREE.Vector3, deltaTime: number): void {
+    this.speedPose = THREE.MathUtils.damp(this.speedPose, this.sprinting ? 1 : 0, 5.6, deltaTime);
+    const turnRate = this.sprinting ? 0.55 : THREE.MathUtils.lerp(3.4, 0.55, this.speedPose);
     const horizontalLength = Math.hypot(direction.x, direction.z);
     this.moving = horizontalLength > 0.01;
     if (this.moving) {
@@ -227,7 +229,7 @@ export class Player {
       let inputDiff = desiredRotation - this.targetRotation;
       while (inputDiff > Math.PI) inputDiff -= Math.PI * 2;
       while (inputDiff < -Math.PI) inputDiff += Math.PI * 2;
-      this.targetRotation += inputDiff * Math.min(1, deltaTime * 4.2);
+      this.targetRotation += THREE.MathUtils.clamp(inputDiff, -turnRate * deltaTime, turnRate * deltaTime);
     }
 
     const descentEnergy = THREE.MathUtils.clamp(-this.body.velocity.y / 36, 0, 1);
@@ -241,7 +243,12 @@ export class Player {
     this.body.velocity.x = THREE.MathUtils.damp(this.body.velocity.x, forwardX * this.speed, 3.1, deltaTime);
     this.body.velocity.z = THREE.MathUtils.damp(this.body.velocity.z, forwardZ * this.speed, 3.1, deltaTime);
 
-    if (this.flaring) {
+    const climbing = this.flaring && !this.sprinting;
+    if (this.sprinting) {
+      // The streamlined boost pose trades lift for speed. Space remains held safely,
+      // but cannot produce an implausible climb until boost is released.
+      this.body.velocity.y = THREE.MathUtils.damp(this.body.velocity.y, -4.5, 3.8, deltaTime);
+    } else if (climbing) {
       // Powered free flight: Space is deliberate climb, not merely a landing flare.
       // The impulse exceeds gravity so the player can choose and hold a positive climb rate.
       this.body.velocity.y = Math.min(38, this.body.velocity.y + 72 * deltaTime);
@@ -254,17 +261,17 @@ export class Player {
     while (rotationDiff > Math.PI) rotationDiff -= Math.PI * 2;
     while (rotationDiff < -Math.PI) rotationDiff += Math.PI * 2;
     this.turnAmount = THREE.MathUtils.damp(this.turnAmount, THREE.MathUtils.clamp(rotationDiff * 2.4, -1, 1), 5, deltaTime);
-    this.mesh.rotation.y += rotationDiff * Math.min(1, deltaTime * 6.5);
+    const visualTurnAuthority = THREE.MathUtils.lerp(1, 0.38, this.speedPose);
+    this.mesh.rotation.y += rotationDiff * Math.min(1, deltaTime * 6.5 * visualTurnAuthority);
     this.mesh.rotation.z = THREE.MathUtils.damp(this.mesh.rotation.z, -this.turnAmount * 0.72, 5.2, deltaTime);
     const climbFactor = THREE.MathUtils.clamp(this.body.velocity.y / 38, 0, 1);
-    const pitch = this.flaring ? THREE.MathUtils.lerp(-0.16, -0.42, climbFactor) : THREE.MathUtils.lerp(0.06, 0.4, descentEnergy);
+    const pitch = climbing ? THREE.MathUtils.lerp(-0.16, -0.42, climbFactor) : THREE.MathUtils.lerp(0.06, 0.4, descentEnergy);
     this.mesh.rotation.x = THREE.MathUtils.damp(this.mesh.rotation.x, pitch, 3.5, deltaTime);
 
     // Shift transitions from a stable wide-wing glide into a streamlined speed pose.
     // The arms sweep alongside the torso and the fabric collapses with them instead of
     // leaving a rigid triangular membrane behind.
-    this.speedPose = THREE.MathUtils.damp(this.speedPose, this.sprinting ? 1 : 0, 5.6, deltaTime);
-    const flareRoll = this.flaring ? -0.2 : 0;
+    const flareRoll = climbing ? -0.2 : 0;
     this.leftArm.rotation.z = THREE.MathUtils.damp(this.leftArm.rotation.z, flareRoll, 5, deltaTime);
     this.rightArm.rotation.z = THREE.MathUtils.damp(this.rightArm.rotation.z, -flareRoll, 5, deltaTime);
     this.leftArm.rotation.y = THREE.MathUtils.damp(this.leftArm.rotation.y, THREE.MathUtils.lerp(0.12, -1.08, this.speedPose), 7, deltaTime);
