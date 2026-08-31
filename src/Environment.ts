@@ -11,7 +11,7 @@ export class Environment {
 
   constructor(private scene: THREE.Scene) {
     scene.background = new THREE.Color(0x8bbbd1);
-    scene.fog = new THREE.FogExp2(0x9bbcc8, 0.00165);
+    scene.fog = new THREE.FogExp2(0x9bbcc8, 0.00055);
 
     const skyGeometry = new THREE.SphereGeometry(1100, 40, 20);
     const skyMaterial = new THREE.ShaderMaterial({
@@ -40,6 +40,8 @@ export class Environment {
     });
     this.sky = new THREE.Mesh(skyGeometry, skyMaterial);
     this.sky.frustumCulled = false;
+    this.sky.renderOrder = -10000;
+    skyMaterial.depthTest = false;
     scene.add(this.sky);
 
     const hemi = new THREE.HemisphereLight(0xc9edff, 0x283129, 1.65);
@@ -98,7 +100,7 @@ export class Environment {
         `);
     };
     this.waterMaterial.customProgramCacheKey = () => 'forya-water-v1';
-    this.water = new THREE.Mesh(new THREE.PlaneGeometry(2000, 2000, 96, 96), this.waterMaterial);
+    this.water = new THREE.Mesh(new THREE.PlaneGeometry(9000, 9000, 128, 128), this.waterMaterial);
     this.water.rotation.x = -Math.PI / 2;
     this.water.position.y = -8;
     this.water.receiveShadow = true;

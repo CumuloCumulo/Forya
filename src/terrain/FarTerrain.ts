@@ -8,12 +8,56 @@ import { TerrainWorkerPool } from './TerrainWorkerPool';
  * masks temporary holes while collision chunks are still streaming in.
  */
 export class FarTerrain {
+  private readonly layers: FarTerrainLayer[];
+
+  constructor(
+    scene: THREE.Scene,
+    private readonly workerPool: TerrainWorkerPool,
+    private readonly seed: number,
+  ) {
+    this.layers = [
+      new FarTerrainLayer(scene, workerPool, seed, {
+        name: 'far-terrain-midfield',
+        size: 3600,
+        resolution: 180,
+        snapDistance: 240,
+        verticalOffset: -2.5,
+        innerHoleSize: 0,
+        renderOrder: -4,
+      }),
+      new FarTerrainLayer(scene, workerPool, seed, {
+        name: 'far-terrain-horizon',
+        size: 10000,
+        resolution: 200,
+        snapDistance: 600,
+        verticalOffset: -8,
+        innerHoleSize: 2400,
+        renderOrder: -5,
+      }),
+    ];
+  }
+
+  update(focus: { x: number; z: number }): void {
+    for (const layer of this.layers) layer.update(focus);
+  }
+
+  dispose(): void {
+    for (const layer of this.layers) layer.dispose();
+  }
+}
+
+interface FarTerrainLayerConfig {
+  name: string;
+  size: number;
+  resolution: number;
+  snapDistance: number;
+  verticalOffset: number;
+  innerHoleSize: number;
+  renderOrder: number;
+}
+
+class FarTerrainLayer {
   private readonly mesh: THREE.Mesh;
-  private readonly size = 3200;
-  private readonly resolution = 160;
-  private readonly snapDistance = 240;
-  private centerX = Number.NaN;
-  private centerZ = Number.NaN;
   private desiredX = Number.NaN;
   private desiredZ = Number.NaN;
   private building = false;
@@ -22,6 +66,7 @@ export class FarTerrain {
     scene: THREE.Scene,
     private readonly workerPool: TerrainWorkerPool,
     private readonly seed: number,
+    private readonly config: FarTerrainLayerConfig,
   ) {
     const material = createTerrainMaterial();
     material.polygonOffset = true;
@@ -30,16 +75,16 @@ export class FarTerrain {
     material.depthWrite = true;
 
     this.mesh = new THREE.Mesh(new THREE.BufferGeometry(), material);
-    this.mesh.name = 'far-terrain-horizon-ring';
+    this.mesh.name = config.name;
     this.mesh.castShadow = false;
     this.mesh.receiveShadow = false;
-    this.mesh.renderOrder = -5;
+    this.mesh.renderOrder = config.renderOrder;
     scene.add(this.mesh);
   }
 
   update(focus: { x: number; z: number }): void {
-    const nextX = Math.round(focus.x / this.snapDistance) * this.snapDistance;
-    const nextZ = Math.round(focus.z / this.snapDistance) * this.snapDistance;
+    const nextX = Math.round(focus.x / this.config.snapDistance) * this.config.snapDistance;
+    const nextZ = Math.round(focus.z / this.config.snapDistance) * this.config.snapDistance;
     if (nextX === this.desiredX && nextZ === this.desiredZ) return;
     this.desiredX = nextX;
     this.desiredZ = nextZ;
@@ -56,9 +101,10 @@ export class FarTerrain {
         seed: this.seed,
         centerX: targetX,
         centerZ: targetZ,
-        size: this.size,
-        resolution: this.resolution,
-        verticalOffset: -2.5,
+        size: this.config.size,
+        resolution: this.config.resolution,
+        verticalOffset: this.config.verticalOffset,
+        innerHoleSize: this.config.innerHoleSize,
       }, 1);
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute('position', new THREE.BufferAttribute(data.positions, 3));
@@ -68,10 +114,8 @@ export class FarTerrain {
       const previous = this.mesh.geometry;
       this.mesh.geometry = geometry;
       previous.dispose();
-      this.centerX = targetX;
-      this.centerZ = targetZ;
     } catch (error) {
-      console.error('Unable to build far terrain', error);
+      console.error(`Unable to build ${this.config.name}`, error);
     } finally {
       this.building = false;
       if (targetX !== this.desiredX || targetZ !== this.desiredZ) void this.rebuild();

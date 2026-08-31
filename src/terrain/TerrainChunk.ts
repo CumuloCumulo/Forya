@@ -25,11 +25,6 @@ interface TreeInstanceData {
   colorJitter: number;
 }
 
-interface RockInstanceData {
-  matrix: THREE.Matrix4;
-  color: THREE.Color;
-}
-
 export const TERRAIN_LOD_CONFIGS: LODConfig[] = [
   { voxelRes: 48, padBelow: 5, padAbove: 5, hasPhysics: true, decorationDensity: 1.0 },
   { voxelRes: 24, padBelow: 3, padAbove: 3, hasPhysics: false, decorationDensity: 0.16 },
@@ -190,7 +185,6 @@ export class TerrainChunk {
   private decorateWithInstancing(): void {
     const baseCount = Math.floor(this.size / 1.8);
     const count = Math.floor(baseCount * this.decorationDensity);
-    const halfSize = this.size / 2;
 
     // Clouds
     const cloudChance = this.lodLevel === 0 ? 0.3 : 0.1;
@@ -205,8 +199,6 @@ export class TerrainChunk {
     }
 
     const treesData: TreeInstanceData[] = [];
-    const rocksData: RockInstanceData[] = [];
-    const dummy = new THREE.Object3D();
 
     for (let i = 0; i < count; i++) {
       const rX = (this.random() - 0.5) * this.size;
@@ -230,20 +222,7 @@ export class TerrainChunk {
 
       if (h < -5) continue;
 
-      if (slope > 0.9 && this.lodLevel === 0) {
-        const rockDensity = this.pipeline.getRockDensity(worldX, worldZ);
-        if (this.random() < 0.22 + rockDensity * 0.42) {
-          const width = 0.8 + this.random() * 2.5;
-          const height = 0.5 + this.random() * 1.8;
-          const depth = 0.75 + this.random() * 2.2;
-          dummy.position.set(worldX, h + height * 0.34, worldZ);
-          dummy.rotation.set((this.random() - 0.5) * 0.38, this.random() * Math.PI, (this.random() - 0.5) * 0.32);
-          dummy.scale.set(width, height, depth);
-          dummy.updateMatrix();
-          const shade = 0.32 + this.random() * 0.15;
-          rocksData.push({ matrix: dummy.matrix.clone(), color: new THREE.Color(shade * 0.88, shade * 0.94, shade) });
-        }
-      } else if (h > 2 && h < 62) {
+      if (h > 2 && h < 62) {
         // Trees in suitable areas
         if (slope > 0.72) continue;
 
@@ -263,7 +242,6 @@ export class TerrainChunk {
       }
     }
 
-    if (rocksData.length > 0) this.createInstancedRocks(rocksData);
     if (treesData.length > 0) this.createInstancedTrees(treesData);
   }
 
@@ -285,40 +263,6 @@ export class TerrainChunk {
     return THREE.MathUtils.lerp(north, south, tz);
   }
 
-  private createInstancedRocks(rocks: RockInstanceData[]): void {
-    const geometry = new THREE.IcosahedronGeometry(1, this.lodLevel === 0 ? 1 : 0);
-    const positions = geometry.attributes.position as THREE.BufferAttribute;
-    for (let i = 0; i < positions.count; i++) {
-      const x = positions.getX(i);
-      const y = positions.getY(i);
-      const z = positions.getZ(i);
-      const stratum = 1 + Math.sin(y * 8.5 + x * 2.1) * 0.055;
-      positions.setXYZ(i, x * stratum, y * (0.92 + Math.cos(x * 5.2) * 0.035), z * stratum);
-    }
-    geometry.computeVertexNormals();
-    const material = new THREE.MeshStandardMaterial({
-      color: 0xffffff,
-      flatShading: false,
-      roughness: 0.96,
-    });
-
-    const mesh = new THREE.InstancedMesh(geometry, material, rocks.length);
-    mesh.name = 'alpine-rock-outcrops';
-    for (let i = 0; i < rocks.length; i++) {
-      mesh.setMatrixAt(i, rocks[i].matrix);
-      mesh.setColorAt(i, rocks[i].color);
-    }
-    mesh.instanceColor!.needsUpdate = true;
-
-    if (this.lodLevel === 0) {
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-    }
-
-    this.group.add(mesh);
-    this.objects.push(mesh);
-  }
-
   private createInstancedTrees(treesData: TreeInstanceData[]): void {
     const radialSegments = this.lodLevel === 0 ? 8 : 6;
     const dummy = new THREE.Object3D();
@@ -329,68 +273,109 @@ export class TerrainChunk {
     const trunkMesh = new THREE.InstancedMesh(trunkGeo, trunkMat, treesData.length);
     trunkMesh.name = 'conifer-trunks';
 
-    const branchGeo = new THREE.ConeGeometry(1, 1, radialSegments, 2, false);
-    branchGeo.translate(0, 0.5, 0);
-    const lowerMesh = new THREE.InstancedMesh(branchGeo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 }), treesData.length);
-    const middleMesh = new THREE.InstancedMesh(branchGeo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.88 }), treesData.length);
-    const crownMesh = new THREE.InstancedMesh(branchGeo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.86 }), treesData.length);
-    lowerMesh.name = 'conifer-lower-branches';
-    middleMesh.name = 'conifer-middle-branches';
-    crownMesh.name = 'conifer-crowns';
-
-    const lowerBase = new THREE.Color(0x2b5541);
-    const middleBase = new THREE.Color(0x376a50);
-    const crownBase = new THREE.Color(0x4a7a5b);
+    const foliageGeo = this.createConiferFoliageGeometry(radialSegments, this.lodLevel === 0 ? 12 : 8);
+    const foliageMat = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      vertexColors: true,
+      roughness: 0.88,
+      side: THREE.DoubleSide,
+    });
+    const foliageMesh = new THREE.InstancedMesh(foliageGeo, foliageMat, treesData.length);
+    foliageMesh.name = 'conifer-layered-boughs';
+    const foliageBase = new THREE.Color(0x356b4d);
 
     for (let i = 0; i < treesData.length; i++) {
       const { x, y, z, trunkHeight, crownHeight, crownWidth, yaw, colorJitter } = treesData[i];
 
       dummy.position.set(x, y, z);
       dummy.rotation.set(0, yaw, 0);
-      dummy.scale.set(1, trunkHeight + crownHeight * 0.76, 1);
+      const trunkWidth = 0.82 + crownWidth * 0.14;
+      dummy.scale.set(trunkWidth, trunkHeight + crownHeight * 0.82, trunkWidth);
       dummy.updateMatrix();
       trunkMesh.setMatrixAt(i, dummy.matrix);
 
-      dummy.position.set(x, y + trunkHeight, z);
-      dummy.scale.set(crownWidth, crownHeight * 0.55, crownWidth);
+      dummy.position.set(x, y + trunkHeight * 0.7, z);
+      dummy.rotation.set(0, yaw, 0);
+      dummy.scale.set(crownWidth, crownHeight, crownWidth);
       dummy.updateMatrix();
-      lowerMesh.setMatrixAt(i, dummy.matrix);
-
-      dummy.position.set(x, y + trunkHeight + crownHeight * 0.3, z);
-      dummy.scale.set(crownWidth * 0.73, crownHeight * 0.49, crownWidth * 0.73);
-      dummy.updateMatrix();
-      middleMesh.setMatrixAt(i, dummy.matrix);
-
-      dummy.position.set(x, y + trunkHeight + crownHeight * 0.57, z);
-      dummy.scale.set(crownWidth * 0.46, crownHeight * 0.44, crownWidth * 0.46);
-      dummy.updateMatrix();
-      crownMesh.setMatrixAt(i, dummy.matrix);
-
-      const lowerColor = lowerBase.clone().offsetHSL(colorJitter * 0.025, colorJitter * 0.04, colorJitter * 0.06);
-      const middleColor = middleBase.clone().offsetHSL(colorJitter * 0.02, colorJitter * 0.04, colorJitter * 0.07);
-      const crownColor = crownBase.clone().offsetHSL(colorJitter * 0.02, colorJitter * 0.03, colorJitter * 0.075);
-      lowerMesh.setColorAt(i, lowerColor);
-      middleMesh.setColorAt(i, middleColor);
-      crownMesh.setColorAt(i, crownColor);
+      foliageMesh.setMatrixAt(i, dummy.matrix);
+      foliageMesh.setColorAt(i, foliageBase.clone().offsetHSL(
+        colorJitter * 0.035,
+        colorJitter * 0.06,
+        colorJitter * 0.09,
+      ));
     }
 
-    lowerMesh.instanceColor!.needsUpdate = true;
-    middleMesh.instanceColor!.needsUpdate = true;
-    crownMesh.instanceColor!.needsUpdate = true;
+    foliageMesh.instanceColor!.needsUpdate = true;
 
     if (this.lodLevel === 0) {
       trunkMesh.castShadow = true;
       trunkMesh.receiveShadow = true;
-      lowerMesh.castShadow = true;
-      lowerMesh.receiveShadow = true;
-      middleMesh.castShadow = true;
-      middleMesh.receiveShadow = true;
-      crownMesh.castShadow = true;
-      crownMesh.receiveShadow = true;
+      foliageMesh.castShadow = true;
+      foliageMesh.receiveShadow = true;
     }
 
-    this.group.add(trunkMesh, lowerMesh, middleMesh, crownMesh);
-    this.objects.push(trunkMesh, lowerMesh, middleMesh, crownMesh);
+    this.group.add(trunkMesh, foliageMesh);
+    this.objects.push(trunkMesh, foliageMesh);
+  }
+
+  private createConiferFoliageGeometry(radialSegments: number, layers: number): THREE.BufferGeometry {
+    const positions: number[] = [];
+    const colors: number[] = [];
+    const indices: number[] = [];
+    const pushVertex = (x: number, y: number, z: number, shade: number): number => {
+      const index = positions.length / 3;
+      positions.push(x, y, z);
+      colors.push(shade * 0.82, shade * 0.96, shade * 0.87);
+      return index;
+    };
+
+    for (let layer = 0; layer < layers; layer++) {
+      const t = layer / Math.max(1, layers - 1);
+      const y = 0.06 + t * 0.83;
+      const layerRadius = Math.pow(1 - t, 0.68) * (0.93 + Math.sin(layer * 2.17) * 0.07) + 0.08;
+      const droop = THREE.MathUtils.lerp(0.12, 0.035, t);
+      const phase = layer * 1.73;
+      const shade = THREE.MathUtils.lerp(0.64, 1, t);
+      const ringSegments = radialSegments * 2;
+      const center = pushVertex(0, y + droop * 0.34, 0, shade * 0.72);
+      const ring: number[] = [];
+      for (let segment = 0; segment < ringSegments; segment++) {
+        const angle = phase + segment / ringSegments * Math.PI * 2;
+        const alternating = segment % 2 === 0 ? 1 : 0.72;
+        const organic = 0.94 + Math.sin(segment * 3.11 + layer * 1.37) * 0.06;
+        const radius = layerRadius * alternating * organic;
+        const tipDroop = droop * (alternating > 0.9 ? 1 : 0.48);
+        ring.push(pushVertex(
+          Math.cos(angle) * radius,
+          y - tipDroop,
+          Math.sin(angle) * radius,
+          shade * (alternating > 0.9 ? 1 : 0.88),
+        ));
+      }
+      for (let segment = 0; segment < ringSegments; segment++) {
+        indices.push(center, ring[segment], ring[(segment + 1) % ringSegments]);
+      }
+    }
+
+    const crownBaseY = 0.82;
+    const crownRadius = 0.16;
+    const apex = pushVertex(0, 1.08, 0, 1.08);
+    for (let segment = 0; segment < radialSegments; segment++) {
+      const angleA = segment / radialSegments * Math.PI * 2;
+      const angleB = (segment + 1) / radialSegments * Math.PI * 2;
+      const a = pushVertex(Math.cos(angleA) * crownRadius, crownBaseY, Math.sin(angleA) * crownRadius, 1);
+      const b = pushVertex(Math.cos(angleB) * crownRadius, crownBaseY, Math.sin(angleB) * crownRadius, 1);
+      indices.push(a, b, apex);
+    }
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    geometry.setIndex(indices);
+    geometry.computeVertexNormals();
+    geometry.computeBoundingSphere();
+    return geometry;
   }
 
   private createTower(x: number, y: number, z: number): void {

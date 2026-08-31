@@ -20,7 +20,7 @@ export class CameraManager {
 
   constructor(renderer: THREE.WebGLRenderer) {
     this.canvas = renderer.domElement;
-    this.camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.2, 2400);
+    this.camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.2, 4400);
     this.setupInputs();
   }
 

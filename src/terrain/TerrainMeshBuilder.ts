@@ -27,6 +27,7 @@ export interface FarMeshRequest {
   size: number;
   resolution: number;
   verticalOffset: number;
+  innerHoleSize?: number;
 }
 
 export type TerrainMeshRequest = ChunkMeshRequest | FarMeshRequest;
@@ -49,13 +50,17 @@ function buildSurface(
   size: number,
   resolution: number,
   verticalOffset = 0,
+  innerHoleSize = 0,
 ): TerrainMeshData {
   const row = resolution + 1;
   const step = size / resolution;
   const half = size * 0.5;
   const positions = new Float32Array(row * row * 3);
   const normals = new Float32Array(row * row * 3);
-  const indices = new Uint32Array(resolution * resolution * 6);
+  const innerHalf = innerHoleSize * 0.5;
+  const fixedIndices = innerHalf > 0 ? null : new Uint32Array(resolution * resolution * 6);
+  const sparseIndices: number[] = [];
+  let indexCursor = 0;
   const normalSample = Math.min(2, Math.max(0.65, step * 0.12));
   let p = 0;
 
@@ -84,19 +89,31 @@ function buildSurface(
     }
   }
 
-  let i = 0;
   for (let z = 0; z < resolution; z++) {
+    const cellZ = centerZ - half + (z + 0.5) * step;
     for (let x = 0; x < resolution; x++) {
+      const cellX = centerX - half + (x + 0.5) * step;
+      if (innerHalf > 0 && Math.abs(cellX - centerX) < innerHalf && Math.abs(cellZ - centerZ) < innerHalf) {
+        continue;
+      }
       const a = x + row * z;
       const b = a + 1;
       const c = x + row * (z + 1);
       const d = c + 1;
-      indices[i++] = a; indices[i++] = c; indices[i++] = b;
-      indices[i++] = b; indices[i++] = c; indices[i++] = d;
+      if (fixedIndices) {
+        fixedIndices[indexCursor++] = a;
+        fixedIndices[indexCursor++] = c;
+        fixedIndices[indexCursor++] = b;
+        fixedIndices[indexCursor++] = b;
+        fixedIndices[indexCursor++] = c;
+        fixedIndices[indexCursor++] = d;
+      } else {
+        sparseIndices.push(a, c, b, b, c, d);
+      }
     }
   }
 
-  return { positions, normals, indices };
+  return { positions, normals, indices: fixedIndices || new Uint32Array(sparseIndices) };
 }
 
 function appendSkirts(data: TerrainMeshData, resolution: number, depth: number): TerrainMeshData {
@@ -163,6 +180,7 @@ export function buildTerrainMesh(request: TerrainMeshRequest): TerrainMeshData {
       request.size,
       request.resolution,
       request.verticalOffset,
+      request.innerHoleSize,
     );
   }
 

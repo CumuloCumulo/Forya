@@ -39,9 +39,4 @@ export class TerrainPipeline {
     const edge = this.detailNoise.noise2D(x * 0.011, z * 0.011);
     return Math.max(0, Math.min(1, (broad * 0.76 + edge * 0.24 + 0.36) / 0.88));
   }
-
-  getRockDensity(x: number, z: number): number {
-    const broad = this.biomeNoise.fbm2D(x * 0.005 + 97, z * 0.005 - 53, 3, 2.1, 0.55);
-    return Math.max(0, Math.min(1, broad * 0.65 + 0.42));
-  }
 }
