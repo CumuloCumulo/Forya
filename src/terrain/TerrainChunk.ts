@@ -58,6 +58,8 @@ export class TerrainChunk {
   private extraBodies: CANNON.Body[] = [];
   private clouds: THREE.Group[] = [];
   private randomState: number;
+  private surfacePositions: Float32Array;
+  private surfaceResolution: number;
 
   constructor(
     group: THREE.Scene,
@@ -80,6 +82,8 @@ export class TerrainChunk {
     const config = TERRAIN_LOD_CONFIGS[lodLevel] || TERRAIN_LOD_CONFIGS[2];
     this.hasPhysics = config.hasPhysics;
     this.decorationDensity = config.decorationDensity;
+    this.surfaceResolution = config.voxelRes;
+    this.surfacePositions = meshData.positions;
 
     this.worldX = chunkX * size;
     this.worldZ = chunkZ * size;
@@ -210,18 +214,23 @@ export class TerrainChunk {
       const worldX = this.worldX + rX;
       const worldZ = this.worldZ + rZ;
 
-      const h = this.pipeline.getHeight(worldX, worldZ);
-
-      // Compute slope
-      let slope = 0;
-      if (this.lodLevel === 0) {
-        const hNext = this.pipeline.getHeight(worldX + 0.5, worldZ);
-        slope = Math.abs(h - hNext);
-      }
+      // Decorations must follow the actual rendered LOD surface. Sampling the full
+      // density field here makes mid-distance trees float above its coarser mesh.
+      const h = this.getVisibleSurfaceHeight(worldX, worldZ);
+      const slopeSample = Math.max(0.75, this.size / this.surfaceResolution);
+      const slopeX = (
+        this.getVisibleSurfaceHeight(worldX + slopeSample, worldZ)
+        - this.getVisibleSurfaceHeight(worldX - slopeSample, worldZ)
+      ) / (slopeSample * 2);
+      const slopeZ = (
+        this.getVisibleSurfaceHeight(worldX, worldZ + slopeSample)
+        - this.getVisibleSurfaceHeight(worldX, worldZ - slopeSample)
+      ) / (slopeSample * 2);
+      const slope = Math.hypot(slopeX, slopeZ);
 
       if (h < -5) continue;
 
-      if (slope > 1.5 && this.lodLevel === 0) {
+      if (slope > 0.9 && this.lodLevel === 0) {
         const rockDensity = this.pipeline.getRockDensity(worldX, worldZ);
         if (this.random() < 0.22 + rockDensity * 0.42) {
           const width = 0.8 + this.random() * 2.5;
@@ -236,14 +245,13 @@ export class TerrainChunk {
         }
       } else if (h > 2 && h < 62) {
         // Trees in suitable areas
-        const slopeForTrees = this.lodLevel === 0 ? slope : 0;
-        if (slopeForTrees > 0.55) continue;
+        if (slope > 0.72) continue;
 
         const forestDensity = this.pipeline.getForestDensity(worldX, worldZ);
         if (this.random() < forestDensity * 0.82) {
           treesData.push({
             x: worldX,
-            y: h,
+            y: h - Math.min(0.34, 0.1 + slope * 0.2),
             z: worldZ,
             trunkHeight: 1.15 + this.random() * 1.45,
             crownHeight: 3.8 + this.random() * 3.6,
@@ -257,6 +265,24 @@ export class TerrainChunk {
 
     if (rocksData.length > 0) this.createInstancedRocks(rocksData);
     if (treesData.length > 0) this.createInstancedTrees(treesData);
+  }
+
+  private getVisibleSurfaceHeight(worldX: number, worldZ: number): number {
+    const resolution = this.surfaceResolution;
+    const row = resolution + 1;
+    const half = this.size * 0.5;
+    const localX = THREE.MathUtils.clamp((worldX - (this.worldX - half)) / this.size * resolution, 0, resolution);
+    const localZ = THREE.MathUtils.clamp((worldZ - (this.worldZ - half)) / this.size * resolution, 0, resolution);
+    const x0 = Math.floor(localX);
+    const z0 = Math.floor(localZ);
+    const x1 = Math.min(resolution, x0 + 1);
+    const z1 = Math.min(resolution, z0 + 1);
+    const tx = localX - x0;
+    const tz = localZ - z0;
+    const heightAt = (x: number, z: number): number => this.surfacePositions[(x + row * z) * 3 + 1];
+    const north = THREE.MathUtils.lerp(heightAt(x0, z0), heightAt(x1, z0), tx);
+    const south = THREE.MathUtils.lerp(heightAt(x0, z1), heightAt(x1, z1), tx);
+    return THREE.MathUtils.lerp(north, south, tz);
   }
 
   private createInstancedRocks(rocks: RockInstanceData[]): void {
