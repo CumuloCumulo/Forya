@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { FlightEnergy } from './gameplay/FlightEnergy';
+import { calculateHeightfieldNormal, resolveSteepTerrainContact } from './gameplay/TerrainContactMath';
 
 interface PhysicsWorldInterface {
   addPlayerBody(position: { x: number; y: number; z: number }, radius: number): CANNON.Body;
@@ -307,6 +308,23 @@ export class Player {
 
   emergencyGroundCheck(world: WorldManagerInterface): number {
     const terrain = world.getHeightAt(this.body.position.x, this.body.position.z);
+    const clearance = this.body.position.y - terrain;
+    if (clearance <= 2.2) {
+      const normal = calculateHeightfieldNormal(
+        this.body.position.x,
+        this.body.position.z,
+        (x, z) => world.getHeightAt(x, z),
+      );
+      const contact = resolveSteepTerrainContact(this.body.velocity, normal, clearance);
+      if (contact.sliding) {
+        this.body.velocity.set(contact.velocity.x, contact.velocity.y, contact.velocity.z);
+        // A small separation bias prevents the flight controller from re-entering
+        // the same heightfield face on the next fixed physics step.
+        this.body.position.x += contact.normal.x * 0.32;
+        this.body.position.z += contact.normal.z * 0.32;
+        this.body.position.y += Math.max(0, contact.normal.y * 0.18);
+      }
+    }
     if (this.body.position.y < terrain + 1.2) {
       this.body.position.y = terrain + 1.2;
       if (this.body.velocity.y < 0) this.body.velocity.y = Math.min(7, Math.abs(this.body.velocity.y) * 0.12);

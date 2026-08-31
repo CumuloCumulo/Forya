@@ -4,6 +4,7 @@ import { EndlessRoutePlanner, hasTerrainLineOfSight } from '../src/gameplay/Endl
 import { FlightEnergy } from '../src/gameplay/FlightEnergy.ts';
 import { calculateSpeedRush, calculateWaterSkimIntensity } from '../src/gameplay/FlightFeedbackMath.ts';
 import { formatCheckpointProgress } from '../src/gameplay/GameplayPresentation.ts';
+import { calculateHeightfieldNormal, resolveSteepTerrainContact } from '../src/gameplay/TerrainContactMath.ts';
 
 test('checkpoint energy is consumed only while climbing and restored by a gate', () => {
   const energy = new FlightEnergy();
@@ -71,4 +72,24 @@ test('water skim requires water, speed, and low altitude together', () => {
 test('endless checkpoint progress starts at zero instead of one', () => {
   assert.deepEqual(formatCheckpointProgress(0, null), { current: '00', total: '∞' });
   assert.deepEqual(formatCheckpointProgress(7, null), { current: '07', total: '∞' });
+});
+
+test('a steep mountain impact becomes an outward tangent slide instead of a stop', () => {
+  const normal = calculateHeightfieldNormal(0, 0, (x) => x * 1.5);
+  const incoming = { x: 42, y: -3, z: 18 };
+  const response = resolveSteepTerrainContact(incoming, normal, 1.4);
+  assert.equal(response.sliding, true);
+  const outgoingNormalSpeed = response.velocity.x * normal.x
+    + response.velocity.y * normal.y
+    + response.velocity.z * normal.z;
+  assert.ok(outgoingNormalSpeed >= 4.49, 'response must separate the rider from the face');
+  assert.ok(Math.hypot(response.velocity.x, response.velocity.z) > 10, 'glancing momentum must survive');
+});
+
+test('open air and shallow terrain do not alter flight velocity', () => {
+  const velocity = { x: 20, y: -4, z: 31 };
+  const shallowNormal = { x: -0.1, y: Math.sqrt(0.99), z: 0 };
+  assert.equal(resolveSteepTerrainContact(velocity, shallowNormal, 1.2).sliding, false);
+  const steepNormal = calculateHeightfieldNormal(0, 0, (x) => x * 1.5);
+  assert.equal(resolveSteepTerrainContact(velocity, steepNormal, 8).sliding, false);
 });
