@@ -1,13 +1,15 @@
 import { Game } from './Game';
+import type { GameMode } from './gameplay/GameMode';
 
 window.addEventListener('DOMContentLoaded', () => {
   const startScreen = document.getElementById('start-screen')!;
-  const startBtn = document.getElementById('start-btn') as HTMLButtonElement;
+  const checkpointBtn = document.getElementById('checkpoint-btn') as HTMLButtonElement;
+  const freeFlightBtn = document.getElementById('free-flight-btn') as HTMLButtonElement;
   const hud = document.getElementById('hud')!;
 
   const game = new Game();
   game.start();
-  const launch = (playAudio: boolean): void => {
+  const launch = (mode: GameMode, playAudio: boolean): void => {
     if (!startScreen.classList.contains('active')) return;
     if (playAudio) {
     const bgm = new Audio('./bgm.mp3');
@@ -18,10 +20,12 @@ window.addEventListener('DOMContentLoaded', () => {
 
     startScreen.classList.remove('active');
     hud.classList.remove('hidden');
-    game.activate();
+    game.activate(mode);
     (window as unknown as { game: Game }).game = game;
   };
 
-  startBtn.addEventListener('click', () => launch(true));
-  if (new URLSearchParams(window.location.search).has('autostart')) launch(false);
+  checkpointBtn.addEventListener('click', () => launch('checkpoint', true));
+  freeFlightBtn.addEventListener('click', () => launch('free', true));
+  const autoMode = new URLSearchParams(window.location.search).get('autostart');
+  if (autoMode !== null) launch(autoMode === 'free' ? 'free' : 'checkpoint', false);
 });

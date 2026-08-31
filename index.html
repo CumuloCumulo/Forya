@@ -16,26 +16,31 @@
         <div class="eyebrow"><span></span> FORYA / ALPINE DISTRICT 01</div>
         <h1>追逐<br><em>地平线</em></h1>
         <p>自由决定方向、高度与速度，飞越山脊、云海与针叶林。</p>
-        <button id="start-btn" class="primary-action"><span>进入自由飞行</span><b>→</b></button>
-        <div class="start-meta"><span>程序化开放山地</span><span>自由爬升与加速</span><span>可选远程航标</span></div>
+        <div class="mode-actions">
+          <button id="checkpoint-btn" class="primary-action"><span><small>模式 01</small>无尽航标续航</span><b>→</b></button>
+          <button id="free-flight-btn" class="secondary-action"><span><small>模式 02</small>自由飞行</span><b>∞</b></button>
+        </div>
+        <div class="start-meta"><span>航标恢复飞行能量</span><span>自由模式无限上升</span><span>高速与贴水动态反馈</span></div>
       </div>
       <div class="version-mark">PRE-ALPHA<br>BUILD 0.2</div>
     </section>
     <section id="hud" class="hud hidden" aria-live="polite">
       <div class="topbar">
         <div class="brand">FORΞA</div>
-        <div class="route-state"><small>远程探索航标</small><strong><span id="checkpoint-current">01</span><i>/</i><span id="checkpoint-total">08</span></strong></div>
+        <div id="route-state" class="route-state"><small id="route-label">无尽续航航标</small><strong><span id="checkpoint-current">00</span><i>/</i><span id="checkpoint-total">∞</span></strong></div>
         <div id="performance-tier" class="performance-tier">LIVE</div>
       </div>
       <div class="velocity-panel">
         <div class="speed"><strong id="speed-value">000</strong><span>KM/H</span></div>
         <div class="altitude"><span>海拔</span><strong id="altitude-value">0000 M</strong><em id="vertical-value">— 00 M/S</em></div>
       </div>
-      <div class="boost-panel"><span>ADRENALINE</span><div class="boost-track"><i id="boost-fill"></i></div></div>
+      <div id="energy-panel" class="energy-panel"><span>FLIGHT ENERGY / 上升能量</span><div class="energy-track"><i id="energy-fill"></i></div></div>
       <div id="objective" class="objective">
-        <span class="objective-index">01</span><div><small>可选航标</small><strong>自由飞行至远方山门</strong></div><b id="objective-distance">— M</b>
+        <span id="objective-index" class="objective-index">01</span><div><small>下一续航点</small><strong>穿越航标恢复上升能量</strong></div><b id="objective-distance">— M</b>
       </div>
       <div class="reticle"><i></i><i></i><span></span></div>
+      <div id="speed-lines" class="speed-lines" aria-hidden="true"></div>
+      <div id="water-skim-vignette" class="water-skim-vignette" aria-hidden="true"></div>
       <div class="controls-hint"><span><kbd>WASD</kbd> 转向</span><span><kbd>SHIFT</kbd> 加速</span><span><kbd>SPACE</kbd> 拉升</span><span><kbd>R</kbd> 重生</span></div>
     </section>
     <div id="toast" class="toast"><span>CHECKPOINT</span><strong>线路保持</strong></div>

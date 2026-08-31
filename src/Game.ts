@@ -6,6 +6,8 @@ import { CameraManager } from './CameraManager';
 import { Environment } from './Environment';
 import { RouteSystem } from './RouteSystem';
 import { HUD } from './HUD';
+import { FlightFeedback } from './FlightFeedback';
+import type { GameMode } from './gameplay/GameMode';
 
 export class Game {
   private scene = new THREE.Scene();
@@ -15,12 +17,14 @@ export class Game {
   private worldManager: WorldManager;
   private player: Player;
   private environment: Environment;
+  private flightFeedback: FlightFeedback;
   private route: RouteSystem;
   private hud = new HUD();
   private keys: Record<string, boolean> = {};
   private timer = new THREE.Timer();
   private frameRequest = 0;
   private active = false;
+  private mode: GameMode = 'free';
   private previewTime = 0;
   private previewFocus = new THREE.Vector3();
 
@@ -29,11 +33,11 @@ export class Game {
     this.cameraManager = new CameraManager(this.renderer);
     this.worldManager = new WorldManager(this.scene, this.physics);
     this.environment = new Environment(this.scene);
+    this.flightFeedback = new FlightFeedback(this.scene);
     this.player = new Player(this.scene, this.physics);
     this.route = new RouteSystem(this.scene, this.worldManager);
     this.respawnPlayer();
     this.player.mesh.visible = false;
-    this.route.setVisible(false);
     this.previewFocus.set(0, this.worldManager.getHeightAt(90, 150) + 22, 150);
     this.setupInput();
     window.addEventListener('resize', this.onResize);
@@ -60,7 +64,7 @@ export class Game {
     window.addEventListener('keydown', (event) => {
       this.keys[event.code] = true;
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(event.code)) event.preventDefault();
-      if (event.code === 'KeyR') this.respawnPlayer();
+      if (event.code === 'KeyR') this.restartSession();
     });
     window.addEventListener('keyup', (event) => { this.keys[event.code] = false; });
     window.addEventListener('blur', () => { this.keys = {}; });
@@ -88,13 +92,17 @@ export class Game {
     this.player.setFlying(Boolean(this.keys.Space));
     this.player.move(moveDirection, deltaTime);
     this.physics.update(deltaTime);
-    this.player.emergencyGroundCheck(this.worldManager);
+    const terrain = this.player.emergencyGroundCheck(this.worldManager);
+    const waterContact = this.player.handleWaterSurface(terrain);
     this.player.update();
     this.player.updateTrail(deltaTime);
 
     const position = this.player.getPosition();
     const velocity = this.player.getVelocity();
-    this.route.update(position, deltaTime);
+    const speedKmh = this.player.getSpeedKmh();
+    const checkpointPassed = this.route.update(position, deltaTime);
+    if (checkpointPassed) this.player.restoreFlightEnergy();
+    const waterSkim = this.flightFeedback.update({ position, velocity, terrainHeight: terrain, speedKmh, waterContact }, deltaTime);
     this.environment.update(position, deltaTime);
     this.cameraManager.update(
       position,
@@ -104,17 +112,25 @@ export class Game {
       (x, z) => this.worldManager.getHeightAt(x, z),
     );
     this.hud.update({
-      speedKmh: this.player.getSpeedKmh(),
+      speedKmh,
       altitude: position.y,
       verticalSpeed: velocity.y,
-      boost: this.player.getBoost(),
+      flightEnergy: this.player.getFlightEnergy(),
+      mode: this.mode,
+      waterSkim,
       checkpoint: this.route.getProgress(),
       checkpointTotal: this.route.getTotal(),
+      nextCheckpoint: this.route.getNextSequence(),
       objectiveDistance: this.route.getDistance(position),
     }, deltaTime);
 
-    const terrain = this.worldManager.getHeightAt(position.x, position.z);
     if (position.y < terrain - 20 || position.y < -220) this.respawnPlayer();
+  }
+
+  private restartSession(): void {
+    if (this.mode === 'checkpoint') this.route.restart();
+    this.player.restoreFlightEnergy();
+    this.respawnPlayer();
   }
 
   private respawnPlayer(): void {
@@ -137,11 +153,13 @@ export class Game {
     this.frameRequest = requestAnimationFrame(this.loop);
   }
 
-  activate(): void {
+  activate(mode: GameMode): void {
     if (this.active) return;
     this.active = true;
+    this.mode = mode;
+    this.route.setMode(mode);
+    this.player.setFlightEnergyLimited(mode === 'checkpoint');
     this.player.mesh.visible = true;
-    this.route.setVisible(true);
     this.respawnPlayer();
     this.cameraManager.reset();
   }

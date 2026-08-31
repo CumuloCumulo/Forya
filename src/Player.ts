@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
+import { FlightEnergy } from './gameplay/FlightEnergy';
 
 interface PhysicsWorldInterface {
   addPlayerBody(position: { x: number; y: number; z: number }, radius: number): CANNON.Body;
@@ -19,13 +20,13 @@ export class Player {
   private speedPose = 0;
   private targetRotation = 0;
   private turnAmount = 0;
-  private boost = 1;
   private sprinting = false;
   private flaring = false;
   private moving = false;
   private speed = 27;
   private trailTime = 0;
   private contrails: THREE.Mesh[] = [];
+  private flightEnergy = new FlightEnergy();
 
   constructor(scene: THREE.Scene, physics: PhysicsWorldInterface) {
     this.mesh.name = 'wingsuit-rider';
@@ -214,8 +215,11 @@ export class Player {
     return pivot;
   }
 
-  setSprinting(value: boolean): void { this.sprinting = value && this.boost > 0.02; }
+  setSprinting(value: boolean): void { this.sprinting = value; }
   setFlying(value: boolean): void { this.flaring = value; }
+  setFlightEnergyLimited(limited: boolean): void { this.flightEnergy.setLimited(limited); }
+  restoreFlightEnergy(): void { this.flightEnergy.restore(); }
+  getFlightEnergy(): number { return this.flightEnergy.getValue(); }
 
   move(direction: THREE.Vector3, deltaTime: number): void {
     this.speedPose = THREE.MathUtils.damp(this.speedPose, this.sprinting ? 1 : 0, 5.6, deltaTime);
@@ -235,15 +239,13 @@ export class Player {
     const descentEnergy = THREE.MathUtils.clamp(-this.body.velocity.y / 36, 0, 1);
     const targetSpeed = this.sprinting ? 76 : 36 + descentEnergy * 18;
     this.speed = THREE.MathUtils.damp(this.speed, targetSpeed, 2.2, deltaTime);
-    if (this.sprinting) this.boost = Math.max(0, this.boost - deltaTime * 0.11);
-    else this.boost = Math.min(1, this.boost + deltaTime * 0.09);
 
     const forwardX = Math.sin(this.targetRotation);
     const forwardZ = Math.cos(this.targetRotation);
     this.body.velocity.x = THREE.MathUtils.damp(this.body.velocity.x, forwardX * this.speed, 3.1, deltaTime);
     this.body.velocity.z = THREE.MathUtils.damp(this.body.velocity.z, forwardZ * this.speed, 3.1, deltaTime);
 
-    const climbing = this.flaring && !this.sprinting;
+    const climbing = this.flaring && !this.sprinting && this.flightEnergy.canClimb();
     if (this.sprinting) {
       // The streamlined boost pose trades lift for speed. Space remains held safely,
       // but cannot produce an implausible climb until boost is released.
@@ -252,6 +254,7 @@ export class Player {
       // Powered free flight: Space is deliberate climb, not merely a landing flare.
       // The impulse exceeds gravity so the player can choose and hold a positive climb rate.
       this.body.velocity.y = Math.min(38, this.body.velocity.y + 72 * deltaTime);
+      this.flightEnergy.consumeClimb(deltaTime);
     } else if (this.body.velocity.y < -7) {
       // Aerodynamic lift counters most of gravity and settles near a shallow glide rate.
       this.body.velocity.y = Math.min(-7, this.body.velocity.y + 46 * deltaTime);
@@ -302,18 +305,27 @@ export class Player {
     this.contrails.forEach((trail) => { (trail.material as THREE.MeshBasicMaterial).opacity = intensity; });
   }
 
-  emergencyGroundCheck(world: WorldManagerInterface): void {
+  emergencyGroundCheck(world: WorldManagerInterface): number {
     const terrain = world.getHeightAt(this.body.position.x, this.body.position.z);
     if (this.body.position.y < terrain + 1.2) {
       this.body.position.y = terrain + 1.2;
       if (this.body.velocity.y < 0) this.body.velocity.y = Math.min(7, Math.abs(this.body.velocity.y) * 0.12);
     }
+    return terrain;
+  }
+
+  handleWaterSurface(terrainHeight: number, waterLevel = -8): boolean {
+    if (terrainHeight >= waterLevel - 0.6 || this.body.position.y >= waterLevel + 1.15) return false;
+    this.body.position.y = waterLevel + 1.15;
+    this.body.velocity.x *= 0.84;
+    this.body.velocity.z *= 0.84;
+    this.body.velocity.y = Math.max(3.5, Math.abs(this.body.velocity.y) * 0.28);
+    return true;
   }
 
   getPosition(): THREE.Vector3 { return this.mesh.position; }
   getVelocity(): THREE.Vector3 { return new THREE.Vector3(this.body.velocity.x, this.body.velocity.y, this.body.velocity.z); }
   getSpeedKmh(): number { return Math.hypot(this.body.velocity.x, this.body.velocity.y, this.body.velocity.z) * 3.6; }
-  getBoost(): number { return this.boost; }
   getTurnAmount(): number { return this.turnAmount; }
   setPosition(x: number, y: number, z: number): void {
     this.body.position.set(x, y, z);

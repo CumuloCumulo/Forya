@@ -1,38 +1,81 @@
 import * as THREE from 'three';
+import { EndlessRoutePlanner } from './gameplay/EndlessRoute';
+import type { GameMode } from './gameplay/GameMode';
 
 interface HeightProvider { getHeightAt(x: number, z: number): number; }
+interface Checkpoint { sequence: number; gate: THREE.Group; }
 
 export class RouteSystem {
-  private checkpoints: THREE.Group[] = [];
-  private current = 0;
+  private readonly scene: THREE.Scene;
+  private readonly world: HeightProvider;
+  private checkpoints: Checkpoint[] = [];
+  private passed = 0;
   private elapsed = 0;
+  private mode: GameMode = 'free';
+  private readonly planner = new EndlessRoutePlanner();
   private readonly ringMaterial = new THREE.MeshStandardMaterial({ color: 0xd7ff45, emissive: 0x7fa51a, emissiveIntensity: 1.8, roughness: 0.3, metalness: 0.12 });
-  private readonly inactiveMaterial = new THREE.MeshStandardMaterial({ color: 0x8cecff, emissive: 0x166078, emissiveIntensity: 0.6, transparent: true, opacity: 0.55, roughness: 0.38 });
+  private readonly inactiveMaterial = new THREE.MeshBasicMaterial({ color: 0x9cefff, transparent: true, opacity: 0.68, depthTest: false, depthWrite: false });
+  private readonly innerMaterial = new THREE.MeshBasicMaterial({ color: 0xcff9ff, transparent: true, opacity: 0.55 });
 
-  constructor(private scene: THREE.Scene, world: HeightProvider) {
-    const route = [
-      [0, 260, 82], [140, 590, 105], [-90, 960, 135], [-340, 1360, 92],
-      [-120, 1780, 150], [270, 2230, 118], [540, 2720, 165], [110, 3280, 102],
-    ];
-    route.forEach(([x, z, clearance], index) => {
-      const y = world.getHeightAt(x, z) + clearance;
-      const gate = this.createGate(index);
-      gate.position.set(x, y, z);
-      const next = route[Math.min(index + 1, route.length - 1)];
-      gate.rotation.y = Math.atan2(next[0] - x, next[1] - z);
-      scene.add(gate);
-      this.checkpoints.push(gate);
+  constructor(scene: THREE.Scene, world: HeightProvider) {
+    this.scene = scene;
+    this.world = world;
+  }
+
+  setMode(mode: GameMode): void {
+    this.mode = mode;
+    this.clear();
+    this.passed = 0;
+    this.elapsed = 0;
+    this.planner.reset();
+    if (mode === 'checkpoint') this.ensureAhead();
+  }
+
+  restart(): void {
+    this.setMode(this.mode);
+  }
+
+  update(playerPosition: THREE.Vector3, deltaTime: number): boolean {
+    if (this.mode !== 'checkpoint') return false;
+    this.elapsed += deltaTime;
+    this.checkpoints.forEach(({ gate }, index) => {
+      const ring = gate.userData.ring as THREE.Mesh;
+      const active = index === 0;
+      const pulse = active ? 1 + Math.sin(this.elapsed * 4) * 0.035 : 1;
+      ring.scale.setScalar(pulse);
+      gate.rotation.z = active ? Math.sin(this.elapsed * 0.9) * 0.025 : 0;
     });
+
+    const target = this.checkpoints[0];
+    if (!target || playerPosition.distanceTo(target.gate.position) >= 15) return false;
+
+    this.removeCheckpoint(target);
+    this.checkpoints.shift();
+    this.passed++;
+    this.ensureAhead();
+    this.refreshMaterials();
+    return true;
+  }
+
+  private ensureAhead(): void {
+    while (this.checkpoints.length < 5) {
+      const point = this.planner.next((x, z) => this.world.getHeightAt(x, z));
+      const gate = this.createGate(point.sequence);
+      gate.position.set(point.x, point.y, point.z);
+      gate.rotation.y = point.heading;
+      this.scene.add(gate);
+      this.checkpoints.push({ sequence: point.sequence, gate });
+    }
     this.refreshMaterials();
   }
 
-  private createGate(index: number): THREE.Group {
+  private createGate(sequence: number): THREE.Group {
     const gate = new THREE.Group();
-    gate.name = `checkpoint-${index + 1}`;
+    gate.name = `checkpoint-${sequence}`;
     const ring = new THREE.Mesh(new THREE.TorusGeometry(14, 0.62, 8, 56), this.inactiveMaterial);
     ring.castShadow = true;
     gate.add(ring);
-    const inner = new THREE.Mesh(new THREE.TorusGeometry(12.2, 0.07, 5, 56), new THREE.MeshBasicMaterial({ color: 0xcff9ff, transparent: true, opacity: 0.55 }));
+    const inner = new THREE.Mesh(new THREE.TorusGeometry(12.2, 0.07, 5, 56), this.innerMaterial);
     gate.add(inner);
     for (const side of [-1, 1]) {
       const marker = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.32, 8, 6), this.inactiveMaterial);
@@ -44,39 +87,33 @@ export class RouteSystem {
     return gate;
   }
 
-  update(playerPosition: THREE.Vector3, deltaTime: number): void {
-    this.elapsed += deltaTime;
-    this.checkpoints.forEach((gate, index) => {
-      const ring = gate.userData.ring as THREE.Mesh;
-      const active = index === this.current;
-      const pulse = active ? 1 + Math.sin(this.elapsed * 4) * 0.035 : 1;
-      ring.scale.setScalar(pulse);
-      gate.rotation.z = active ? Math.sin(this.elapsed * 0.9) * 0.025 : 0;
-    });
-    const target = this.checkpoints[this.current];
-    if (target && playerPosition.distanceTo(target.position) < 15) {
-      this.current++;
-      this.refreshMaterials();
-    }
-  }
-
   private refreshMaterials(): void {
-    this.checkpoints.forEach((gate, index) => {
-      const material = index === this.current ? this.ringMaterial : this.inactiveMaterial;
+    this.checkpoints.forEach(({ gate }, index) => {
+      const material = index === 0 ? this.ringMaterial : this.inactiveMaterial;
       gate.children.forEach(child => {
         if ((child as THREE.Mesh).isMesh && child !== gate.children[1]) (child as THREE.Mesh).material = material;
       });
-      gate.visible = index >= this.current - 1 && index <= this.current + 2;
+      gate.visible = index <= 2;
+      gate.renderOrder = index === 1 ? 20 : 0;
     });
   }
 
-  getProgress(): number { return this.current; }
-  getTotal(): number { return this.checkpoints.length; }
-  setVisible(visible: boolean): void {
-    if (visible) this.refreshMaterials();
-    else this.checkpoints.forEach(gate => { gate.visible = false; });
+  private removeCheckpoint(checkpoint: Checkpoint): void {
+    checkpoint.gate.removeFromParent();
+    checkpoint.gate.traverse(object => {
+      if ((object as THREE.Mesh).isMesh) (object as THREE.Mesh).geometry.dispose();
+    });
   }
+
+  private clear(): void {
+    for (const checkpoint of this.checkpoints) this.removeCheckpoint(checkpoint);
+    this.checkpoints.length = 0;
+  }
+
+  getProgress(): number { return this.passed; }
+  getNextSequence(): number { return this.checkpoints[0]?.sequence ?? this.passed + 1; }
+  getTotal(): number | null { return this.mode === 'checkpoint' ? null : 0; }
   getDistance(position: THREE.Vector3): number {
-    return this.checkpoints[this.current]?.position.distanceTo(position) ?? Number.POSITIVE_INFINITY;
+    return this.checkpoints[0]?.gate.position.distanceTo(position) ?? Number.POSITIVE_INFINITY;
   }
 }

@@ -16,17 +16,25 @@ button { font:inherit; }
 .primary-action { display:flex; align-items:center; justify-content:space-between; width:min(340px,100%); padding:19px 22px 19px 25px; color:#081116; background:var(--acid); border:0; cursor:pointer; font-weight:800; letter-spacing:.1em; text-transform:uppercase; clip-path:polygon(0 0,94% 0,100% 38%,100% 100%,0 100%); transition:transform .2s,filter .2s; pointer-events:auto; }
 .primary-action:hover { transform:translateX(7px); filter:brightness(1.08); }
 .primary-action b { font-size:24px; }
+.mode-actions { display:flex; flex-wrap:wrap; gap:12px; }
+.mode-actions button small { display:block; margin-bottom:5px; font-size:8px; letter-spacing:.2em; opacity:.58; }
+.secondary-action { display:flex; align-items:center; justify-content:space-between; width:min(250px,100%); padding:15px 18px; color:white; background:rgba(8,24,33,.62); border:1px solid rgba(255,255,255,.28); cursor:pointer; font-weight:750; letter-spacing:.08em; text-align:left; clip-path:polygon(0 0,93% 0,100% 34%,100% 100%,0 100%); transition:transform .2s,background .2s,border-color .2s; pointer-events:auto; }
+.secondary-action:hover { transform:translateX(5px); background:rgba(16,42,52,.76); border-color:var(--ice); }
+.secondary-action b { color:var(--ice); font-size:22px; }
 .start-meta { display:flex; flex-wrap:wrap; gap:24px; margin-top:34px; color:rgba(255,255,255,.38); font:600 10px/1 Inter,sans-serif; letter-spacing:.16em; text-transform:uppercase; }
 .start-meta span::before { content:"/"; margin-right:8px; color:var(--acid); }
 .version-mark { position:absolute; right:35px; bottom:28px; color:rgba(255,255,255,.34); font:600 10px/1.5 Inter,sans-serif; letter-spacing:.18em; text-align:right; }
 .hud { position:absolute; inset:0; transition:opacity .4s; }
 .hud.hidden { opacity:0; }
+.topbar,.velocity-panel,.energy-panel,.objective,.reticle,.controls-hint { z-index:2; }
 .topbar { position:absolute; top:0; left:0; right:0; height:78px; display:grid; grid-template-columns:1fr auto 1fr; align-items:center; padding:0 34px; background:linear-gradient(180deg,rgba(2,10,15,.68),transparent); }
 .brand { font:italic 800 24px/1 "Barlow Condensed",sans-serif; letter-spacing:.08em; }
 .route-state { display:flex; align-items:center; gap:18px; }
 .route-state small { color:rgba(255,255,255,.54); font-size:10px; letter-spacing:.18em; text-transform:uppercase; }
 .route-state strong { font:700 18px/1 "Barlow Condensed",sans-serif; letter-spacing:.1em; }
 .route-state i { padding:0 5px; color:rgba(255,255,255,.35); font-style:normal; }
+.route-state.free strong { display:none; }
+.route-state.free small { color:var(--ice); }
 .performance-tier { justify-self:end; padding:6px 9px; border:1px solid rgba(215,255,69,.4); color:var(--acid); font-size:9px; letter-spacing:.18em; }
 .velocity-panel { position:absolute; right:32px; bottom:37px; display:flex; align-items:flex-end; gap:20px; text-align:right; filter:drop-shadow(0 4px 15px rgba(0,0,0,.45)); }
 .speed strong { display:block; font:italic 800 72px/.68 "Barlow Condensed",sans-serif; letter-spacing:-.03em; }
@@ -36,10 +44,12 @@ button { font:inherit; }
 .altitude strong { display:block; margin-top:6px; font:600 17px/1 "Barlow Condensed",sans-serif; letter-spacing:.08em; }
 .altitude em { display:block; margin-top:7px; color:rgba(255,255,255,.52); font:normal 600 9px/1 Inter,sans-serif; letter-spacing:.1em; }
 .altitude em.climbing { color:var(--ice); }
-.boost-panel { position:absolute; right:33px; bottom:132px; width:247px; }
-.boost-panel>span { display:block; margin-bottom:7px; color:rgba(255,255,255,.5); font-size:9px; letter-spacing:.18em; }
-.boost-track { height:4px; overflow:hidden; background:rgba(255,255,255,.18); transform:skewX(-16deg); }
-.boost-track i { display:block; width:100%; height:100%; background:linear-gradient(90deg,#72dfff,var(--acid)); box-shadow:0 0 12px rgba(215,255,69,.5); transform-origin:left; }
+.energy-panel { position:absolute; right:33px; bottom:132px; width:247px; transition:opacity .2s; }
+.energy-panel>span { display:block; margin-bottom:7px; color:rgba(255,255,255,.5); font-size:9px; letter-spacing:.16em; }
+.energy-track { height:4px; overflow:hidden; background:rgba(255,255,255,.18); transform:skewX(-16deg); }
+.energy-track i { display:block; width:100%; height:100%; background:linear-gradient(90deg,#72dfff,var(--acid)); box-shadow:0 0 12px rgba(126,231,255,.45); transform-origin:left; transition:transform .12s; }
+.energy-panel.low .energy-track i { background:linear-gradient(90deg,#ff825f,#ffd65a); box-shadow:0 0 13px rgba(255,130,95,.5); }
+.mode-hidden { opacity:0!important; visibility:hidden; }
 .objective { position:absolute; left:32px; top:104px; display:flex; align-items:center; gap:13px; padding:13px 17px 13px 11px; min-width:315px; background:linear-gradient(90deg,var(--glass),rgba(5,16,24,.22)); border-left:2px solid var(--acid); }
 .objective-index { color:var(--ink); background:var(--acid); width:30px; height:30px; display:grid; place-items:center; font:800 12px/1 Inter,sans-serif; }
 .objective small { display:block; margin-bottom:4px; color:rgba(255,255,255,.42); font-size:8px; letter-spacing:.18em; text-transform:uppercase; }
@@ -49,6 +59,11 @@ button { font:inherit; }
 .reticle i { position:absolute; top:50%; width:16px; height:1px; background:white; }
 .reticle i:first-child { left:0; } .reticle i:nth-child(2) { right:0; }
 .reticle span { position:absolute; left:50%; top:50%; width:5px; height:5px; border:1px solid var(--acid); transform:translate(-50%,-50%) rotate(45deg); }
+.speed-lines { --rush:0; --rush-speed:.52s; position:absolute; inset:0; overflow:hidden; opacity:calc(var(--rush) * .96); transition:opacity .12s; mask-image:radial-gradient(circle at 50% 50%,transparent 0 28%,rgba(0,0,0,.2) 40%,#000 67%); }
+.speed-lines i { position:absolute; left:50%; top:50%; width:calc(19vmin * var(--length)); height:clamp(1px,.12vmin,2px); background:linear-gradient(90deg,transparent 0 12%,rgba(205,245,255,.35) 38%,rgba(235,252,255,.98)); transform-origin:left center; animation:speed-rush var(--rush-speed) linear infinite; animation-delay:var(--delay); animation-play-state:paused; filter:drop-shadow(0 0 5px rgba(126,231,255,.8)); will-change:transform,opacity; }
+.speed-lines.active i { animation-play-state:running; }
+@keyframes speed-rush { 0%{opacity:0;transform:rotate(var(--angle)) translateX(21vmin) scaleX(.14)} 18%{opacity:.92} 72%{opacity:.78} 100%{opacity:0;transform:rotate(var(--angle)) translateX(74vmin) scaleX(1.5)} }
+.water-skim-vignette { position:absolute; inset:0; opacity:0; background:radial-gradient(ellipse at 50% 112%,rgba(190,248,255,.5),rgba(84,211,235,.15) 28%,transparent 58%); mix-blend-mode:screen; transition:opacity .1s; }
 .controls-hint { position:absolute; left:32px; bottom:30px; display:flex; gap:17px; color:rgba(255,255,255,.48); font-size:9px; letter-spacing:.08em; }
 .controls-hint span { display:flex; align-items:center; gap:6px; }
 kbd { padding:4px 6px; color:rgba(255,255,255,.78); background:rgba(5,16,24,.45); border:1px solid rgba(255,255,255,.22); border-radius:2px; font:600 9px/1 Inter,sans-serif; box-shadow:none; }
@@ -56,4 +71,4 @@ kbd { padding:4px 6px; color:rgba(255,255,255,.78); background:rgba(5,16,24,.45)
 .toast.show { opacity:1; transform:translate(-50%,0) scale(1); }
 .toast span { padding:5px 13px; color:#081116; background:var(--acid); font:800 9px/1 Inter,sans-serif; letter-spacing:.2em; }
 .toast strong { margin-top:9px; font:italic 800 31px/1 "Barlow Condensed",sans-serif; letter-spacing:.04em; text-shadow:0 3px 15px #000; }
-@media (max-width:700px) { .start-copy{left:25px;width:calc(100vw - 50px)} .start-copy h1{font-size:72px} .start-meta,.controls-hint,.performance-tier{display:none} .objective{left:15px;top:82px;min-width:285px} .velocity-panel{right:18px;bottom:24px} .speed strong{font-size:58px} .boost-panel{right:19px;bottom:106px;width:205px} .topbar{padding:0 18px} }
+@media (max-width:700px) { .start-copy{left:25px;width:calc(100vw - 50px)} .start-copy h1{font-size:72px} .mode-actions{max-width:290px}.mode-actions button{width:100%}.start-meta,.controls-hint,.performance-tier{display:none} .objective{left:15px;top:82px;min-width:285px} .velocity-panel{right:18px;bottom:24px} .speed strong{font-size:58px} .energy-panel{right:19px;bottom:106px;width:205px} .topbar{padding:0 18px} }
